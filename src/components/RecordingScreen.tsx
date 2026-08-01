@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { RecordingResult } from "@/app/page";
+import type { RecordingResult, FrameAnalysisEntry } from "@/app/page";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RecordingScreenProps {
   topic: string;
@@ -9,7 +11,15 @@ interface RecordingScreenProps {
   onBack: () => void;
 }
 
-type RecordingState = "requesting" | "recording" | "stopping" | "error_permission" | "error_support";
+type RecordingState =
+  | "requesting"
+  | "initializing_mp"   // MediaPipe WASM loading
+  | "recording"
+  | "stopping"
+  | "error_permission"
+  | "error_support";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -17,12 +27,97 @@ function formatDuration(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function RecordingScreen({ topic, onDone, onBack }: RecordingScreenProps) {
+/**
+ * Derives a 0–1 eye-contact score from FaceLandmarker's iris landmarks.
+ *
+ * Iris landmarks (468-471 = left iris, 472-475 = right iris) tell us where
+ * the pupil center is relative to the eye corners. When pupils are centered,
+ * the user is looking at the camera (eye contact ≈ 1). When they drift left/
+ * right the score drops toward 0.
+ *
+ * We also use the nose-tip (1) vs mid-forehead (10) relative position to
+ * detect if the person has turned their head horizontally.
+ */
+function scoreFrame(landmarks: number[][]): {
+  eyeContactScore: number;
+  headPoseScore: number;
+} {
+  if (!landmarks || landmarks.length === 0) {
+    return { eyeContactScore: 0, headPoseScore: 0 };
+  }
+
+  const pts = landmarks; // [x, y, z] per landmark index
+
+  // ── Head pose (yaw): compare nose tip to mid-face ────────────────────────
+  // Landmark 1 = nose tip, 10 = forehead center, 454 = right cheek, 234 = left cheek
+  const noseTip = pts[1];
+  const leftCheek = pts[234];
+  const rightCheek = pts[454];
+
+  let headPoseScore = 1;
+  if (noseTip && leftCheek && rightCheek) {
+    const faceCenterX = (leftCheek[0] + rightCheek[0]) / 2;
+    const yawOffset = Math.abs(noseTip[0] - faceCenterX);
+    // yawOffset near 0 → facing camera; near 0.15+ → turned away
+    headPoseScore = Math.max(0, 1 - yawOffset / 0.12);
+  }
+
+  // ── Eye contact (gaze): iris position relative to eye width ──────────────
+  // Left iris center: avg of landmarks 468–471
+  // Left eye corners: 33 (inner), 133 (outer)
+  // Right iris center: avg of landmarks 472–475
+  // Right eye corners: 362 (inner), 263 (outer)
+  let eyeContactScore = 0.5; // neutral default
+
+  const leftIrisIndices = [468, 469, 470, 471];
+  const rightIrisIndices = [472, 473, 474, 475];
+
+  const hasIris =
+    pts.length > 475 &&
+    leftIrisIndices.every((i) => pts[i]) &&
+    rightIrisIndices.every((i) => pts[i]);
+
+  if (hasIris) {
+    // Left iris center x
+    const leftIrisX =
+      leftIrisIndices.reduce((sum, i) => sum + pts[i][0], 0) /
+      leftIrisIndices.length;
+    const leftInner = pts[133]?.[0] ?? 0;
+    const leftOuter = pts[33]?.[0] ?? 1;
+    const leftEyeW = Math.abs(leftOuter - leftInner) || 1;
+    const leftGaze = Math.abs(leftIrisX - (leftInner + leftOuter) / 2) / leftEyeW;
+
+    // Right iris center x
+    const rightIrisX =
+      rightIrisIndices.reduce((sum, i) => sum + pts[i][0], 0) /
+      rightIrisIndices.length;
+    const rightInner = pts[362]?.[0] ?? 0;
+    const rightOuter = pts[263]?.[0] ?? 1;
+    const rightEyeW = Math.abs(rightOuter - rightInner) || 1;
+    const rightGaze = Math.abs(rightIrisX - (rightInner + rightOuter) / 2) / rightEyeW;
+
+    const avgGaze = (leftGaze + rightGaze) / 2;
+    // avgGaze ≈ 0 → centered; ≈ 0.5 → extreme
+    eyeContactScore = Math.max(0, 1 - avgGaze / 0.3);
+  }
+
+  return { eyeContactScore, headPoseScore };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function RecordingScreen({
+  topic,
+  onDone,
+  onBack,
+}: RecordingScreenProps) {
   const [state, setState] = useState<RecordingState>("requesting");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Refs — never cause re-renders
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null); // overlay for landmarks (optional)
   const streamRef = useRef<MediaStream | null>(null);
   const audioRecorderRef = useRef<MediaRecorder | null>(null);
   const videoRecorderRef = useRef<MediaRecorder | null>(null);
@@ -30,15 +125,96 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
   const videoChunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const animFrameRef = useRef<number>(0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const faceLandmarkerRef = useRef<any>(null); // typed as any to avoid importing heavy MP types at top-level
+  const frameDataRef = useRef<FrameAnalysisEntry[]>([]);
+  const mpReadyRef = useRef(false);
 
-  const cleanupStream = useCallback(() => {
+  // ── Cleanup ───────────────────────────────────────────────────────────────
+
+  const cleanupAll = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    cancelAnimationFrame(animFrameRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
 
+  // ── MediaPipe initializer (dynamic import so WASM doesn't block SSR) ──────
+
+  const initMediaPipe = useCallback(async () => {
+    try {
+      const { FaceLandmarker, FilesetResolver } = await import(
+        "@mediapipe/tasks-vision"
+      );
+
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+      );
+
+      faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+      });
+
+      mpReadyRef.current = true;
+    } catch (err) {
+      console.warn("[MediaPipe] Failed to initialize:", err);
+      mpReadyRef.current = false;
+    }
+  }, []);
+
+  // ── Detection loop (runs every animation frame while recording) ───────────
+
+  const startDetectionLoop = useCallback(() => {
+    let lastVideoTime = -1;
+
+    function loop() {
+      const video = videoRef.current;
+      const landmarker = faceLandmarkerRef.current;
+
+      if (video && landmarker && mpReadyRef.current && video.readyState >= 2) {
+        if (video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+
+          try {
+            const result = landmarker.detectForVideo(video, performance.now());
+            const landmarks = result.faceLandmarks?.[0] ?? [];
+            const faceDetected = landmarks.length > 0;
+
+            const { eyeContactScore, headPoseScore } = scoreFrame(landmarks);
+
+            const entry: FrameAnalysisEntry = {
+              timestamp: Date.now() - startTimeRef.current,
+              eyeContactScore,
+              headPoseScore,
+              faceDetected,
+            };
+
+            frameDataRef.current.push(entry);
+
+            // (data is accumulated silently; no UI updates needed here)
+          } catch {
+            // Silently skip frame on decode errors
+          }
+        }
+      }
+
+      animFrameRef.current = requestAnimationFrame(loop);
+    }
+
+    animFrameRef.current = requestAnimationFrame(loop);
+  }, []);
+
+  // ── Main effect: request media → init MP → start recording ───────────────
+
   useEffect(() => {
-    // Check support first
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setState("error_support");
       return;
@@ -50,8 +226,9 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
 
     let cancelled = false;
 
-    async function requestMedia() {
+    async function boot() {
       try {
+        // 1. Request camera + mic
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 640, height: 360, frameRate: 24 },
           audio: true,
@@ -63,13 +240,19 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         }
 
         streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
 
-        // Attach preview (muted to avoid feedback)
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        // 2. Init MediaPipe in parallel (non-blocking for the user)
+        setState("initializing_mp");
+        await initMediaPipe(); // resolves even on failure (sets mpStatus="failed")
 
-        // Audio-only recorder
+        if (cancelled) return;
+
+        // 3. Set up recorders
+        audioChunksRef.current = [];
+        videoChunksRef.current = [];
+        frameDataRef.current = [];
+
         const audioStream = new MediaStream(stream.getAudioTracks());
         const audioRec = new MediaRecorder(audioStream);
         audioRecorderRef.current = audioRec;
@@ -77,17 +260,17 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
           if (e.data.size > 0) audioChunksRef.current.push(e.data);
         };
 
-        // Full audio+video recorder
         const videoRec = new MediaRecorder(stream);
         videoRecorderRef.current = videoRec;
         videoRec.ondataavailable = (e) => {
           if (e.data.size > 0) videoChunksRef.current.push(e.data);
         };
 
-        // Start both
+        // 4. Start everything
         startTimeRef.current = Date.now();
         audioRec.start(250);
         videoRec.start(250);
+        startDetectionLoop();
 
         timerRef.current = setInterval(() => {
           setElapsedMs(Date.now() - startTimeRef.current);
@@ -109,13 +292,15 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
       }
     }
 
-    requestMedia();
+    boot();
 
     return () => {
       cancelled = true;
-      cleanupStream();
+      cleanupAll();
     };
-  }, [cleanupStream]);
+  }, [initMediaPipe, startDetectionLoop, cleanupAll]);
+
+  // ── Stop handler ──────────────────────────────────────────────────────────
 
   const handleStop = useCallback(() => {
     if (state !== "recording") return;
@@ -128,6 +313,12 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
       timerRef.current = null;
     }
 
+    // Stop detection loop
+    cancelAnimationFrame(animFrameRef.current);
+
+    const collectedFrames = [...frameDataRef.current];
+    const mpWasReady = mpReadyRef.current;
+
     let audioSettled = false;
     let videoSettled = false;
 
@@ -137,31 +328,31 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
       const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
       const videoBlob = new Blob(videoChunksRef.current, { type: "video/webm" });
 
-      // Stop stream tracks
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
 
-      onDone({ audioBlob, videoBlob, durationMs: duration, topic });
+      onDone({
+        audioBlob,
+        videoBlob,
+        durationMs: duration,
+        topic,
+        frameAnalysis: collectedFrames,
+        mediapipeReady: mpWasReady,
+      });
     }
 
     const audioRec = audioRecorderRef.current;
     const videoRec = videoRecorderRef.current;
 
     if (audioRec && audioRec.state !== "inactive") {
-      audioRec.onstop = () => {
-        audioSettled = true;
-        tryFinish();
-      };
+      audioRec.onstop = () => { audioSettled = true; tryFinish(); };
       audioRec.stop();
     } else {
       audioSettled = true;
     }
 
     if (videoRec && videoRec.state !== "inactive") {
-      videoRec.onstop = () => {
-        videoSettled = true;
-        tryFinish();
-      };
+      videoRec.onstop = () => { videoSettled = true; tryFinish(); };
       videoRec.stop();
     } else {
       videoSettled = true;
@@ -170,7 +361,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
     tryFinish();
   }, [state, topic, onDone]);
 
-  // ─── Error states ────────────────────────────────────────────────────────────
+  // ─── Error states ─────────────────────────────────────────────────────────
 
   if (state === "error_support") {
     return (
@@ -188,14 +379,14 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         title="Camera access needed"
         message={
           errorMsg ||
-          "Vocalyze AI needs access to your camera and microphone to record your session. Please allow access in your browser and reload this page."
+          "Vocalyze AI needs access to your camera and microphone. Please allow access and reload."
         }
         onBack={onBack}
       />
     );
   }
 
-  // ─── Requesting / loading ─────────────────────────────────────────────────
+  // ─── Requesting ───────────────────────────────────────────────────────────
 
   if (state === "requesting") {
     return (
@@ -208,11 +399,25 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
     );
   }
 
+  // ─── Initializing MediaPipe — show the same spinner as "requesting" ─────────
+
+  if (state === "initializing_mp") {
+    return (
+      <div className="min-h-screen flex items-center justify-center animate-fade-in">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin mx-auto mb-4" />
+          <p className="text-sm text-[#6b7280]">Preparing session…</p>
+        </div>
+      </div>
+    );
+  }
+
   // ─── Recording / Stopping ─────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in">
       <div className="w-full max-w-2xl">
+
         {/* Back */}
         <button
           onClick={onBack}
@@ -232,7 +437,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         </div>
 
         {/* Video preview */}
-        <div className="relative rounded-2xl overflow-hidden bg-[#1a1a2e] aspect-video shadow-md mb-6">
+        <div className="relative rounded-2xl overflow-hidden bg-[#1a1a2e] aspect-video shadow-md mb-4">
           <video
             ref={videoRef}
             autoPlay
@@ -242,7 +447,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             aria-label="Live camera preview"
           />
 
-          {/* Recording indicator overlay */}
+          {/* Recording indicator */}
           {state === "recording" && (
             <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
               <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
@@ -252,12 +457,16 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             </div>
           )}
 
+          {/* Stopping overlay */}
           {state === "stopping" && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
               <p className="text-white text-sm">Finishing…</p>
             </div>
           )}
         </div>
+
+        {/* Hidden canvas (available for future overlay rendering) */}
+        <canvas ref={canvasRef} className="hidden" />
 
         {/* Controls */}
         <div className="flex flex-col items-center gap-3">

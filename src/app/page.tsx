@@ -8,11 +8,20 @@ import ReviewScreen from "@/components/ReviewScreen";
 
 export type AppScreen = "landing" | "topic" | "recording" | "review";
 
+export interface FrameAnalysisEntry {
+  timestamp: number;       // ms since recording start
+  eyeContactScore: number; // 0–1, higher = looking at camera
+  headPoseScore: number;   // 0–1, higher = facing forward
+  faceDetected: boolean;
+}
+
 export interface RecordingResult {
   audioBlob: Blob;
   videoBlob: Blob;
   durationMs: number;
   topic: string;
+  frameAnalysis: FrameAnalysisEntry[];
+  mediapipeReady: boolean; // false if MediaPipe failed to init (graceful fallback)
 }
 
 export default function Home() {
