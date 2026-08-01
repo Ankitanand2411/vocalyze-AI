@@ -64,11 +64,6 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
 
         streamRef.current = stream;
 
-        // Attach preview (muted to avoid feedback)
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
         // Audio-only recorder
         const audioStream = new MediaStream(stream.getAudioTracks());
         const audioRec = new MediaRecorder(audioStream);
@@ -116,6 +111,16 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
       cleanupStream();
     };
   }, [cleanupStream]);
+
+  // The <video> element only exists in the DOM once state === "recording"
+  // (see JSX below), so we can't attach the stream inside requestMedia() —
+  // videoRef.current is still null at that point. Instead, attach it here,
+  // which re-runs once the video element actually mounts.
+  useEffect(() => {
+    if (state === "recording" && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [state]);
 
   const handleStop = useCallback(() => {
     if (state !== "recording") return;
