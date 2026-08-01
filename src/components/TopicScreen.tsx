@@ -11,7 +11,7 @@ const TOPICS = [
   "Describe a place — real or imagined — where you feel completely at ease. What makes it that way?",
 ];
 
-const PREP_DURATION = 10; // seconds
+const PREP_DURATION = 5; // seconds
 
 interface TopicScreenProps {
   onStart: (topic: string) => void;
