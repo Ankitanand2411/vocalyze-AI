@@ -13,7 +13,7 @@ interface RecordingScreenProps {
 
 type RecordingState =
   | "requesting"
-  | "initializing_mp"   // MediaPipe WASM loading
+  | "initializing_mp"   // MediaPipe WASM loading (camera already on)
   | "recording"
   | "stopping"
   | "error_permission"
@@ -30,13 +30,10 @@ function formatDuration(ms: number): string {
 /**
  * Derives a 0–1 eye-contact score from FaceLandmarker's iris landmarks.
  *
- * Iris landmarks (468-471 = left iris, 472-475 = right iris) tell us where
- * the pupil center is relative to the eye corners. When pupils are centered,
- * the user is looking at the camera (eye contact ≈ 1). When they drift left/
- * right the score drops toward 0.
- *
- * We also use the nose-tip (1) vs mid-forehead (10) relative position to
- * detect if the person has turned their head horizontally.
+ * Iris landmarks 468–471 = left iris, 472–475 = right iris.
+ * When pupils are centered relative to eye corners, the user is looking at the
+ * camera (score → 1). When they drift left/right the score drops toward 0.
+ * Head pose (yaw) is derived from nose-tip vs cheek midpoint offset.
  */
 function scoreFrame(landmarks: number[][]): {
   eyeContactScore: number;
@@ -46,10 +43,9 @@ function scoreFrame(landmarks: number[][]): {
     return { eyeContactScore: 0, headPoseScore: 0 };
   }
 
-  const pts = landmarks; // [x, y, z] per landmark index
+  const pts = landmarks;
 
-  // ── Head pose (yaw): compare nose tip to mid-face ────────────────────────
-  // Landmark 1 = nose tip, 10 = forehead center, 454 = right cheek, 234 = left cheek
+  // ── Head pose (yaw) ───────────────────────────────────────────────────────
   const noseTip = pts[1];
   const leftCheek = pts[234];
   const rightCheek = pts[454];
@@ -57,17 +53,11 @@ function scoreFrame(landmarks: number[][]): {
   let headPoseScore = 1;
   if (noseTip && leftCheek && rightCheek) {
     const faceCenterX = (leftCheek[0] + rightCheek[0]) / 2;
-    const yawOffset = Math.abs(noseTip[0] - faceCenterX);
-    // yawOffset near 0 → facing camera; near 0.15+ → turned away
-    headPoseScore = Math.max(0, 1 - yawOffset / 0.12);
+    headPoseScore = Math.max(0, 1 - Math.abs(noseTip[0] - faceCenterX) / 0.12);
   }
 
-  // ── Eye contact (gaze): iris position relative to eye width ──────────────
-  // Left iris center: avg of landmarks 468–471
-  // Left eye corners: 33 (inner), 133 (outer)
-  // Right iris center: avg of landmarks 472–475
-  // Right eye corners: 362 (inner), 263 (outer)
-  let eyeContactScore = 0.5; // neutral default
+  // ── Eye contact (gaze) ────────────────────────────────────────────────────
+  let eyeContactScore = 0.5;
 
   const leftIrisIndices = [468, 469, 470, 471];
   const rightIrisIndices = [472, 473, 474, 475];
@@ -78,27 +68,17 @@ function scoreFrame(landmarks: number[][]): {
     rightIrisIndices.every((i) => pts[i]);
 
   if (hasIris) {
-    // Left iris center x
     const leftIrisX =
-      leftIrisIndices.reduce((sum, i) => sum + pts[i][0], 0) /
-      leftIrisIndices.length;
-    const leftInner = pts[133]?.[0] ?? 0;
-    const leftOuter = pts[33]?.[0] ?? 1;
-    const leftEyeW = Math.abs(leftOuter - leftInner) || 1;
-    const leftGaze = Math.abs(leftIrisX - (leftInner + leftOuter) / 2) / leftEyeW;
+      leftIrisIndices.reduce((s, i) => s + pts[i][0], 0) / leftIrisIndices.length;
+    const leftEyeW = Math.abs((pts[33]?.[0] ?? 1) - (pts[133]?.[0] ?? 0)) || 1;
+    const leftGaze = Math.abs(leftIrisX - ((pts[33]?.[0] ?? 0) + (pts[133]?.[0] ?? 1)) / 2) / leftEyeW;
 
-    // Right iris center x
     const rightIrisX =
-      rightIrisIndices.reduce((sum, i) => sum + pts[i][0], 0) /
-      rightIrisIndices.length;
-    const rightInner = pts[362]?.[0] ?? 0;
-    const rightOuter = pts[263]?.[0] ?? 1;
-    const rightEyeW = Math.abs(rightOuter - rightInner) || 1;
-    const rightGaze = Math.abs(rightIrisX - (rightInner + rightOuter) / 2) / rightEyeW;
+      rightIrisIndices.reduce((s, i) => s + pts[i][0], 0) / rightIrisIndices.length;
+    const rightEyeW = Math.abs((pts[263]?.[0] ?? 1) - (pts[362]?.[0] ?? 0)) || 1;
+    const rightGaze = Math.abs(rightIrisX - ((pts[263]?.[0] ?? 0) + (pts[362]?.[0] ?? 1)) / 2) / rightEyeW;
 
-    const avgGaze = (leftGaze + rightGaze) / 2;
-    // avgGaze ≈ 0 → centered; ≈ 0.5 → extreme
-    eyeContactScore = Math.max(0, 1 - avgGaze / 0.3);
+    eyeContactScore = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.3);
   }
 
   return { eyeContactScore, headPoseScore };
@@ -115,44 +95,68 @@ export default function RecordingScreen({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Refs — never cause re-renders
+  // ── Shared infrastructure ─────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null); // overlay for landmarks (optional)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioRecorderRef = useRef<MediaRecorder | null>(null);
-  const videoRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const videoChunksRef = useRef<Blob[]>([]);
-  const startTimeRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const animFrameRef = useRef<number>(0);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const faceLandmarkerRef = useRef<any>(null); // typed as any to avoid importing heavy MP types at top-level
-  const frameDataRef = useRef<FrameAnalysisEntry[]>([]);
-  const mpReadyRef = useRef(false);
+
+  /**
+   * SHARED CLOCK — set once to Date.now() just before both modules start.
+   * Every timestamp in Module A and Module B is expressed as:
+   *   offset_ms = Date.now() - startTimeRef.current
+   * This makes audio-word timestamps and face-frame timestamps directly
+   * comparable on the backend with zero drift.
+   */
+  const startTimeRef = useRef<number>(0);
+
+  // ── MODULE A — Audio (→ Backend / Whisper) ────────────────────────────────
+  //
+  //  Captures a lean, audio-only stream so the Whisper API gets clean audio
+  //  without video payload weight. Each chunk is time-indexed from t=0.
+  //
+  const moduleA = {
+    recorderRef: useRef<MediaRecorder | null>(null),
+    chunksRef: useRef<Blob[]>([]),
+  };
+
+  // ── MODULE B — Video + MediaPipe (Face Analysis) ──────────────────────────
+  //
+  //  Records full audio+video for local playback / storage.
+  //  Simultaneously runs FaceLandmarker in a rAF loop; every detected frame
+  //  is stamped with (Date.now() - startTimeRef.current) — same zero point
+  //  as Module A, so backend can align Whisper word events with face poses.
+  //
+  const moduleB = {
+    recorderRef: useRef<MediaRecorder | null>(null),
+    chunksRef: useRef<Blob[]>([]),
+    faceLandmarkerRef: useRef<unknown>(null), // typed as unknown; import is dynamic
+    animFrameRef: useRef<number>(0),
+    frameDataRef: useRef<FrameAnalysisEntry[]>([]),
+    mpReadyRef: useRef(false),
+  };
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
   const cleanupAll = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    cancelAnimationFrame(animFrameRef.current);
+    cancelAnimationFrame(moduleB.animFrameRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── MediaPipe initializer (dynamic import so WASM doesn't block SSR) ──────
+  // ── MODULE B — MediaPipe initializer ─────────────────────────────────────
 
-  const initMediaPipe = useCallback(async () => {
+  const initModuleB_MP = useCallback(async () => {
     try {
       const { FaceLandmarker, FilesetResolver } = await import(
         "@mediapipe/tasks-vision"
       );
-
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
       );
-
-      faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
+      moduleB.faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
             "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
@@ -162,115 +166,119 @@ export default function RecordingScreen({
         numFaces: 1,
         outputFaceBlendshapes: false,
       });
-
-      mpReadyRef.current = true;
+      moduleB.mpReadyRef.current = true;
+      console.log("[Module B] FaceLandmarker ready");
     } catch (err) {
-      console.warn("[MediaPipe] Failed to initialize:", err);
-      mpReadyRef.current = false;
+      console.warn("[Module B] MediaPipe init failed — continuing without face analysis:", err);
+      moduleB.mpReadyRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Detection loop (runs every animation frame while recording) ───────────
+  // ── MODULE B — Detection loop ─────────────────────────────────────────────
+  //  Runs on every animation frame. Stamps each entry relative to startTimeRef
+  //  so timestamps align with Module A's audio chunk offsets.
 
-  const startDetectionLoop = useCallback(() => {
+  const startModuleB_Loop = useCallback(() => {
     let lastVideoTime = -1;
 
     function loop() {
       const video = videoRef.current;
-      const landmarker = faceLandmarkerRef.current;
+      const landmarker = moduleB.faceLandmarkerRef.current as {
+        detectForVideo: (v: HTMLVideoElement, t: number) => {
+          faceLandmarks?: number[][][];
+        };
+      } | null;
 
-      if (video && landmarker && mpReadyRef.current && video.readyState >= 2) {
+      if (video && landmarker && moduleB.mpReadyRef.current && video.readyState >= 2) {
         if (video.currentTime !== lastVideoTime) {
           lastVideoTime = video.currentTime;
-
           try {
             const result = landmarker.detectForVideo(video, performance.now());
             const landmarks = result.faceLandmarks?.[0] ?? [];
-            const faceDetected = landmarks.length > 0;
+            const { eyeContactScore, headPoseScore } = scoreFrame(landmarks as number[][]);
 
-            const { eyeContactScore, headPoseScore } = scoreFrame(landmarks);
-
-            const entry: FrameAnalysisEntry = {
+            moduleB.frameDataRef.current.push({
+              // ← Same zero point as Module A audio chunks
               timestamp: Date.now() - startTimeRef.current,
               eyeContactScore,
               headPoseScore,
-              faceDetected,
-            };
-
-            frameDataRef.current.push(entry);
-
-            // (data is accumulated silently; no UI updates needed here)
+              faceDetected: landmarks.length > 0,
+            });
           } catch {
-            // Silently skip frame on decode errors
+            // Skip undecodable frame silently
           }
         }
       }
 
-      animFrameRef.current = requestAnimationFrame(loop);
+      moduleB.animFrameRef.current = requestAnimationFrame(loop);
     }
 
-    animFrameRef.current = requestAnimationFrame(loop);
+    moduleB.animFrameRef.current = requestAnimationFrame(loop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Main effect: request media → init MP → start recording ───────────────
+  // ── Boot: request media → init MP → ATOMIC START ─────────────────────────
 
   useEffect(() => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setState("error_support");
-      return;
+      setState("error_support"); return;
     }
     if (typeof MediaRecorder === "undefined") {
-      setState("error_support");
-      return;
+      setState("error_support"); return;
     }
 
     let cancelled = false;
 
     async function boot() {
       try {
-        // 1. Request camera + mic
+        // ── Step 1: request camera + mic ─────────────────────────────────────
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 640, height: 360, frameRate: 24 },
           audio: true,
         });
-
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
 
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
 
-        // 2. Init MediaPipe in parallel (non-blocking for the user)
+        // ── Step 2: init Module B (MediaPipe WASM) ───────────────────────────
+        //   Run while camera is warm so the user doesn't wait extra.
         setState("initializing_mp");
-        await initMediaPipe(); // resolves even on failure (sets mpStatus="failed")
+        await initModuleB_MP(); // always resolves; failure is non-fatal
 
         if (cancelled) return;
 
-        // 3. Set up recorders
-        audioChunksRef.current = [];
-        videoChunksRef.current = [];
-        frameDataRef.current = [];
+        // ── Step 3: wire up both recorders ───────────────────────────────────
 
+        // Module A — audio only, lean bitrate (clean signal for Whisper)
+        moduleA.chunksRef.current = [];
         const audioStream = new MediaStream(stream.getAudioTracks());
-        const audioRec = new MediaRecorder(audioStream);
-        audioRecorderRef.current = audioRec;
-        audioRec.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        const recA = new MediaRecorder(audioStream, { audioBitsPerSecond: 64_000 });
+        moduleA.recorderRef.current = recA;
+        recA.ondataavailable = (e) => {
+          if (e.data.size > 0) moduleA.chunksRef.current.push(e.data);
         };
 
-        const videoRec = new MediaRecorder(stream);
-        videoRecorderRef.current = videoRec;
-        videoRec.ondataavailable = (e) => {
-          if (e.data.size > 0) videoChunksRef.current.push(e.data);
+        // Module B — full audio+video for playback + MediaPipe frame input
+        moduleB.chunksRef.current = [];
+        moduleB.frameDataRef.current = [];
+        const recB = new MediaRecorder(stream, {
+          videoBitsPerSecond: 800_000,
+          audioBitsPerSecond: 64_000,
+        });
+        moduleB.recorderRef.current = recB;
+        recB.ondataavailable = (e) => {
+          if (e.data.size > 0) moduleB.chunksRef.current.push(e.data);
         };
 
-        // 4. Start everything
-        startTimeRef.current = Date.now();
-        audioRec.start(250);
-        videoRec.start(250);
-        startDetectionLoop();
+        // ── Step 4: ATOMIC START — set shared clock, kick off both modules ───
+        //   Both .start() calls are in the same synchronous block so t=0 is
+        //   identical for Module A audio chunks and Module B frame timestamps.
+        startTimeRef.current = Date.now();   // ← SHARED CLOCK t=0
+        recA.start(250);                      // Module A: audio chunk every 250 ms
+        recB.start(250);                      // Module B: video chunk every 250 ms
+        startModuleB_Loop();                  // Module B: face detection rAF loop
 
         timerRef.current = setInterval(() => {
           setElapsedMs(Date.now() - startTimeRef.current);
@@ -280,10 +288,7 @@ export default function RecordingScreen({
       } catch (err: unknown) {
         if (cancelled) return;
         const error = err as Error;
-        if (
-          error.name === "NotAllowedError" ||
-          error.name === "PermissionDeniedError"
-        ) {
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
           setState("error_permission");
         } else {
           setErrorMsg(error.message || "Unknown error accessing camera.");
@@ -294,11 +299,9 @@ export default function RecordingScreen({
 
     boot();
 
-    return () => {
-      cancelled = true;
-      cleanupAll();
-    };
-  }, [initMediaPipe, startDetectionLoop, cleanupAll]);
+    return () => { cancelled = true; cleanupAll(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initModuleB_MP, startModuleB_Loop, cleanupAll]);
 
   // ── Stop handler ──────────────────────────────────────────────────────────
 
@@ -306,59 +309,58 @@ export default function RecordingScreen({
     if (state !== "recording") return;
     setState("stopping");
 
-    const duration = Date.now() - startTimeRef.current;
+    const durationMs = Date.now() - startTimeRef.current;
 
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
-    // Stop detection loop
-    cancelAnimationFrame(animFrameRef.current);
+    // Stop Module B detection loop immediately
+    cancelAnimationFrame(moduleB.animFrameRef.current);
 
-    const collectedFrames = [...frameDataRef.current];
-    const mpWasReady = mpReadyRef.current;
+    // Snapshot collected data before recorders flush final chunks
+    const frameAnalysis = [...moduleB.frameDataRef.current];
+    const mpWasReady = moduleB.mpReadyRef.current;
 
-    let audioSettled = false;
-    let videoSettled = false;
+    // Wait for both recorders to flush their last chunk (onstop fires after flush)
+    let aSettled = false;
+    let bSettled = false;
 
     function tryFinish() {
-      if (!audioSettled || !videoSettled) return;
+      if (!aSettled || !bSettled) return;
 
-      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-      const videoBlob = new Blob(videoChunksRef.current, { type: "video/webm" });
+      // Module A output → goes to Whisper / backend
+      const audioBlob = new Blob(moduleA.chunksRef.current, { type: "audio/webm" });
+
+      // Module B output → local playback + frame analysis
+      const videoBlob = new Blob(moduleB.chunksRef.current, { type: "video/webm" });
 
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
 
       onDone({
-        audioBlob,
-        videoBlob,
-        durationMs: duration,
+        audioBlob,       // Module A — send to backend (Whisper)
+        videoBlob,       // Module B — local review / send to backend
+        durationMs,
         topic,
-        frameAnalysis: collectedFrames,
+        frameAnalysis,   // Module B — per-frame face data, timestamps from shared clock
         mediapipeReady: mpWasReady,
       });
     }
 
-    const audioRec = audioRecorderRef.current;
-    const videoRec = videoRecorderRef.current;
+    const recA = moduleA.recorderRef.current;
+    const recB = moduleB.recorderRef.current;
 
-    if (audioRec && audioRec.state !== "inactive") {
-      audioRec.onstop = () => { audioSettled = true; tryFinish(); };
-      audioRec.stop();
-    } else {
-      audioSettled = true;
-    }
+    if (recA && recA.state !== "inactive") {
+      recA.onstop = () => { aSettled = true; tryFinish(); };
+      recA.stop();
+    } else { aSettled = true; }
 
-    if (videoRec && videoRec.state !== "inactive") {
-      videoRec.onstop = () => { videoSettled = true; tryFinish(); };
-      videoRec.stop();
-    } else {
-      videoSettled = true;
-    }
+    if (recB && recB.state !== "inactive") {
+      recB.onstop = () => { bSettled = true; tryFinish(); };
+      recB.stop();
+    } else { bSettled = true; }
 
     tryFinish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, topic, onDone]);
 
   // ─── Error states ─────────────────────────────────────────────────────────
@@ -386,27 +388,16 @@ export default function RecordingScreen({
     );
   }
 
-  // ─── Requesting ───────────────────────────────────────────────────────────
+  // ─── Requesting / Initializing MP ────────────────────────────────────────
 
-  if (state === "requesting") {
+  if (state === "requesting" || state === "initializing_mp") {
     return (
       <div className="min-h-screen flex items-center justify-center animate-fade-in">
         <div className="text-center">
           <div className="w-10 h-10 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin mx-auto mb-4" />
-          <p className="text-sm text-[#6b7280]">Requesting camera access…</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Initializing MediaPipe — show the same spinner as "requesting" ─────────
-
-  if (state === "initializing_mp") {
-    return (
-      <div className="min-h-screen flex items-center justify-center animate-fade-in">
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin mx-auto mb-4" />
-          <p className="text-sm text-[#6b7280]">Preparing session…</p>
+          <p className="text-sm text-[#6b7280]">
+            {state === "requesting" ? "Requesting camera access…" : "Preparing session…"}
+          </p>
         </div>
       </div>
     );
@@ -447,7 +438,7 @@ export default function RecordingScreen({
             aria-label="Live camera preview"
           />
 
-          {/* Recording indicator */}
+          {/* Recording timer badge */}
           {state === "recording" && (
             <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
               <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
@@ -465,7 +456,7 @@ export default function RecordingScreen({
           )}
         </div>
 
-        {/* Hidden canvas (available for future overlay rendering) */}
+        {/* Hidden canvas — available for future landmark overlay rendering */}
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Controls */}
