@@ -156,20 +156,32 @@ export default function RecordingScreen({
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
       );
-      moduleB.faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "GPU",
-        },
-        runningMode: "VIDEO",
-        numFaces: 1,
-        outputFaceBlendshapes: false,
-      });
+
+      // Try GPU first (faster), fall back to CPU (more compatible on Linux)
+      const createLandmarker = async (delegate: "GPU" | "CPU") =>
+        FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate,
+          },
+          runningMode: "VIDEO",
+          numFaces: 1,
+          outputFaceBlendshapes: false,
+        });
+
+      try {
+        moduleB.faceLandmarkerRef.current = await createLandmarker("GPU");
+        console.log("[Module B] FaceLandmarker ready (GPU)");
+      } catch {
+        console.warn("[Module B] GPU delegate failed — retrying with CPU");
+        moduleB.faceLandmarkerRef.current = await createLandmarker("CPU");
+        console.log("[Module B] FaceLandmarker ready (CPU fallback)");
+      }
+
       moduleB.mpReadyRef.current = true;
-      console.log("[Module B] FaceLandmarker ready");
     } catch (err) {
-      console.warn("[Module B] MediaPipe init failed — continuing without face analysis:", err);
+      console.error("[Module B] MediaPipe init failed entirely:", err);
       moduleB.mpReadyRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,9 +192,14 @@ export default function RecordingScreen({
   //  so timestamps align with Module A's audio chunk offsets.
 
   const startModuleB_Loop = useCallback(() => {
-    let lastVideoTime = -1;
+    const TARGET_INTERVAL_MS = 1000 / 24;
+    let lastDetectTime = -TARGET_INTERVAL_MS;
+    let rafCount = 0;
+    let firstFrameLogged = false;
 
     function loop() {
+      rafCount++;
+      const now = performance.now();
       const video = videoRef.current;
       const landmarker = moduleB.faceLandmarkerRef.current as {
         detectForVideo: (v: HTMLVideoElement, t: number) => {
@@ -190,23 +207,51 @@ export default function RecordingScreen({
         };
       } | null;
 
-      if (video && landmarker && moduleB.mpReadyRef.current && video.readyState >= 2) {
-        if (video.currentTime !== lastVideoTime) {
-          lastVideoTime = video.currentTime;
-          try {
-            const result = landmarker.detectForVideo(video, performance.now());
-            const landmarks = result.faceLandmarks?.[0] ?? [];
-            const { eyeContactScore, headPoseScore } = scoreFrame(landmarks as number[][]);
+      // ── Diagnostic: log state every ~1 second ──────────────────────────────
+      if (rafCount % 60 === 0) {
+        console.log("[MP Loop] state snapshot:", {
+          rafCount,
+          hasVideo: !!video,
+          readyState: video?.readyState,          // needs >= 2
+          hasLandmarker: !!landmarker,
+          mpReadyRef: moduleB.mpReadyRef.current, // needs true
+          timeSinceLastDetect: Math.round(now - lastDetectTime),
+          framesCollected: moduleB.frameDataRef.current.length,
+        });
+      }
 
-            moduleB.frameDataRef.current.push({
-              // ← Same zero point as Module A audio chunks
-              timestamp: Date.now() - startTimeRef.current,
-              eyeContactScore,
-              headPoseScore,
+      if (
+        video &&
+        landmarker &&
+        moduleB.mpReadyRef.current &&
+        video.readyState >= 2 &&
+        now - lastDetectTime >= TARGET_INTERVAL_MS
+      ) {
+        lastDetectTime = now;
+        try {
+          const result = landmarker.detectForVideo(video, now);
+          const landmarks = result.faceLandmarks?.[0] ?? [];
+
+          if (!firstFrameLogged) {
+            firstFrameLogged = true;
+            console.log("[MP Loop] ✅ First frame detected:", {
+              landmarkCount: landmarks.length,
               faceDetected: landmarks.length > 0,
+              sampleLandmark: landmarks[0],
             });
-          } catch {
-            // Skip undecodable frame silently
+          }
+
+          const { eyeContactScore, headPoseScore } = scoreFrame(landmarks as number[][]);
+
+          moduleB.frameDataRef.current.push({
+            timestamp: Date.now() - startTimeRef.current,
+            eyeContactScore,
+            headPoseScore,
+            faceDetected: landmarks.length > 0,
+          });
+        } catch (err) {
+          if (moduleB.frameDataRef.current.length === 0) {
+            console.error("[MP Loop] ❌ detectForVideo threw:", err);
           }
         }
       }
@@ -214,6 +259,7 @@ export default function RecordingScreen({
       moduleB.animFrameRef.current = requestAnimationFrame(loop);
     }
 
+    console.log("[MP Loop] started");
     moduleB.animFrameRef.current = requestAnimationFrame(loop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
