@@ -349,6 +349,20 @@ export default function RecordingScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initModuleB_MP, startModuleB_Loop, cleanupAll]);
 
+  // ── Attach stream to <video> once it mounts ───────────────────────────────
+  //
+  //  The <video> element only exists in the DOM when state is "recording" or
+  //  "stopping". During "requesting" and "initializing_mp" the JSX renders a
+  //  spinner instead, so videoRef.current is null when boot() first gets the
+  //  stream. This effect fires after the <video> element mounts and wires up
+  //  the live stream so the camera preview is visible.
+  //
+  useEffect(() => {
+    if ((state === "recording" || state === "stopping") && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [state]);
+
   // ── Stop handler ──────────────────────────────────────────────────────────
 
   const handleStop = useCallback(() => {
