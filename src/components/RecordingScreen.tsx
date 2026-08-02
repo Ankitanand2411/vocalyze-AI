@@ -19,6 +19,10 @@ type RecordingState =
   | "error_permission"
   | "error_support";
 
+// MediaPipe FaceLandmarker returns landmarks as {x, y, z} objects,
+// NOT number[] tuples — this was the source of the null-score bug.
+type Landmark = { x: number; y: number; z: number };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
@@ -35,7 +39,7 @@ function formatDuration(ms: number): string {
  * camera (score → 1). When they drift left/right the score drops toward 0.
  * Head pose (yaw) is derived from nose-tip vs cheek midpoint offset.
  */
-function scoreFrame(landmarks: number[][]): {
+function scoreFrame(landmarks: Landmark[]): {
   eyeContactScore: number;
   headPoseScore: number;
 } {
@@ -52,8 +56,8 @@ function scoreFrame(landmarks: number[][]): {
 
   let headPoseScore = 1;
   if (noseTip && leftCheek && rightCheek) {
-    const faceCenterX = (leftCheek[0] + rightCheek[0]) / 2;
-    headPoseScore = Math.max(0, 1 - Math.abs(noseTip[0] - faceCenterX) / 0.12);
+    const faceCenterX = (leftCheek.x + rightCheek.x) / 2;
+    headPoseScore = Math.max(0, 1 - Math.abs(noseTip.x - faceCenterX) / 0.12);
   }
 
   // ── Eye contact (gaze) ────────────────────────────────────────────────────
@@ -69,16 +73,18 @@ function scoreFrame(landmarks: number[][]): {
 
   if (hasIris) {
     const leftIrisX =
-      leftIrisIndices.reduce((s, i) => s + pts[i][0], 0) / leftIrisIndices.length;
-    const leftEyeW = Math.abs((pts[33]?.[0] ?? 1) - (pts[133]?.[0] ?? 0)) || 1;
-    const leftGaze = Math.abs(leftIrisX - ((pts[33]?.[0] ?? 0) + (pts[133]?.[0] ?? 1)) / 2) / leftEyeW;
+      leftIrisIndices.reduce((s, i) => s + pts[i].x, 0) / leftIrisIndices.length;
+    const leftEyeW = Math.abs((pts[33]?.x ?? 1) - (pts[133]?.x ?? 0)) || 1;
+    const leftGaze =
+      Math.abs(leftIrisX - ((pts[33]?.x ?? 0) + (pts[133]?.x ?? 1)) / 2) / leftEyeW;
 
     const rightIrisX =
-      rightIrisIndices.reduce((s, i) => s + pts[i][0], 0) / rightIrisIndices.length;
-    const rightEyeW = Math.abs((pts[263]?.[0] ?? 1) - (pts[362]?.[0] ?? 0)) || 1;
-    const rightGaze = Math.abs(rightIrisX - ((pts[263]?.[0] ?? 0) + (pts[362]?.[0] ?? 1)) / 2) / rightEyeW;
+      rightIrisIndices.reduce((s, i) => s + pts[i].x, 0) / rightIrisIndices.length;
+    const rightEyeW = Math.abs((pts[263]?.x ?? 1) - (pts[362]?.x ?? 0)) || 1;
+    const rightGaze =
+      Math.abs(rightIrisX - ((pts[263]?.x ?? 0) + (pts[362]?.x ?? 1)) / 2) / rightEyeW;
 
-    eyeContactScore = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.3);
+    eyeContactScore = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.6);
   }
 
   return { eyeContactScore, headPoseScore };
@@ -202,9 +208,10 @@ export default function RecordingScreen({
       const now = performance.now();
       const video = videoRef.current;
       const landmarker = moduleB.faceLandmarkerRef.current as {
-        detectForVideo: (v: HTMLVideoElement, t: number) => {
-          faceLandmarks?: number[][][];
-        };
+        detectForVideo: (
+          v: HTMLVideoElement,
+          t: number
+        ) => { faceLandmarks?: Landmark[][] };
       } | null;
 
       // ── Diagnostic: log state every ~1 second ──────────────────────────────
@@ -241,7 +248,7 @@ export default function RecordingScreen({
             });
           }
 
-          const { eyeContactScore, headPoseScore } = scoreFrame(landmarks as number[][]);
+          const { eyeContactScore, headPoseScore } = scoreFrame(landmarks);
 
           moduleB.frameDataRef.current.push({
             timestamp: Date.now() - startTimeRef.current,
@@ -264,7 +271,7 @@ export default function RecordingScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Boot: request media → init MP → ATOMIC START ─────────────────────────
+  // ── Boot: request media → attach preview → init MP → ATOMIC START ────────
 
   useEffect(() => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -286,10 +293,16 @@ export default function RecordingScreen({
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
 
         streamRef.current = stream;
+
+        // The <video> element is now rendered unconditionally (see JSX below),
+        // so it already exists here — attach immediately and let it start
+        // buffering while MediaPipe's WASM/model loads in Step 2. This is
+        // what makes readyState >= 2 by the time the shared clock starts,
+        // instead of losing the first several seconds of frames.
         if (videoRef.current) videoRef.current.srcObject = stream;
 
         // ── Step 2: init Module B (MediaPipe WASM) ───────────────────────────
-        //   Run while camera is warm so the user doesn't wait extra.
+        //   Camera preview is already warming up in parallel with this load.
         setState("initializing_mp");
         await initModuleB_MP(); // always resolves; failure is non-fatal
 
@@ -321,6 +334,9 @@ export default function RecordingScreen({
         // ── Step 4: ATOMIC START — set shared clock, kick off both modules ───
         //   Both .start() calls are in the same synchronous block so t=0 is
         //   identical for Module A audio chunks and Module B frame timestamps.
+        //   By this point the <video> has had the entire MP init duration to
+        //   warm up, so the detection loop should hit readyState >= 2 almost
+        //   immediately instead of after a multi-second delay.
         startTimeRef.current = Date.now();   // ← SHARED CLOCK t=0
         recA.start(250);                      // Module A: audio chunk every 250 ms
         recB.start(250);                      // Module B: video chunk every 250 ms
@@ -349,19 +365,10 @@ export default function RecordingScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initModuleB_MP, startModuleB_Loop, cleanupAll]);
 
-  // ── Attach stream to <video> once it mounts ───────────────────────────────
-  //
-  //  The <video> element only exists in the DOM when state is "recording" or
-  //  "stopping". During "requesting" and "initializing_mp" the JSX renders a
-  //  spinner instead, so videoRef.current is null when boot() first gets the
-  //  stream. This effect fires after the <video> element mounts and wires up
-  //  the live stream so the camera preview is visible.
-  //
-  useEffect(() => {
-    if ((state === "recording" || state === "stopping") && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [state]);
+  // NOTE: the old "attach stream to <video> once it mounts" effect has been
+  // removed. The <video> element is now always in the DOM (see JSX below),
+  // so Step 1 of boot() can attach the stream directly — no more waiting on
+  // a state transition before the camera starts warming up.
 
   // ── Stop handler ──────────────────────────────────────────────────────────
 
@@ -448,22 +455,12 @@ export default function RecordingScreen({
     );
   }
 
-  // ─── Requesting / Initializing MP ────────────────────────────────────────
-
-  if (state === "requesting" || state === "initializing_mp") {
-    return (
-      <div className="min-h-screen flex items-center justify-center animate-fade-in">
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin mx-auto mb-4" />
-          <p className="text-sm text-[#6b7280]">
-            {state === "requesting" ? "Requesting camera access…" : "Preparing session…"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Recording / Stopping ─────────────────────────────────────────────────
+  // ─── Requesting / Initializing / Recording / Stopping ────────────────────
+  //
+  //  The <video> element is now rendered in every one of these states so it
+  //  can attach the stream and start buffering as early as possible — this
+  //  is what fixes the multi-second gap at the start of frameAnalysis.
+  //  Overlays (spinner / timer / finishing) are absolutely positioned on top.
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in">
@@ -487,7 +484,7 @@ export default function RecordingScreen({
           <p className="text-sm text-[#1a1a2e] leading-relaxed line-clamp-2">"{topic}"</p>
         </div>
 
-        {/* Video preview */}
+        {/* Video preview — always mounted (requesting → initializing_mp → recording → stopping) */}
         <div className="relative rounded-2xl overflow-hidden bg-[#1a1a2e] aspect-video shadow-md mb-4">
           <video
             ref={videoRef}
@@ -497,6 +494,18 @@ export default function RecordingScreen({
             className="w-full h-full object-cover"
             aria-label="Live camera preview"
           />
+
+          {/* Requesting / preparing overlay */}
+          {(state === "requesting" || state === "initializing_mp") && (
+            <div className="absolute inset-0 bg-[#1a1a2e]/70 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-10 h-10 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin mx-auto mb-4" />
+                <p className="text-sm text-white">
+                  {state === "requesting" ? "Requesting camera access…" : "Preparing session…"}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Recording timer badge */}
           {state === "recording" && (
