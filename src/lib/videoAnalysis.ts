@@ -274,9 +274,18 @@ export async function analyzeVideo(
   // this specific device, then derive the sample interval that keeps total
   // analysis time within ANALYSIS_BUDGET_MS, clamped to [MIN, MAX]_SAMPLE_FPS.
   let sampleIntervalMs = 1000 / 5; // safe default (5fps) if benchmark fails
+  // MediaPipe requires strictly monotonically increasing timestamps.
+  // Track the last timestamp sent so we never send the same value twice.
+  let lastMpTimestamp = -1;
   try {
-    const benchStart = performance.now();
-    faceLandmarker!.detectForVideo(video, 0);
+    // Use performance.now() for the benchmark — this is in the ms-since-page-load
+    // domain, which is always > 0 and won't collide with video.currentTime values
+    // (which start at 0). We'll switch to performance.now() for all subsequent
+    // calls too, since that domain is guaranteed monotonically increasing.
+    const benchTs = performance.now();
+    const benchStart = benchTs;
+    faceLandmarker!.detectForVideo(video, benchTs);
+    lastMpTimestamp = benchTs;
     const msPerFrame = performance.now() - benchStart;
 
     const videoDurationSec = durationMs / 1000;
@@ -313,7 +322,12 @@ export async function analyzeVideo(
 
         lastSampledMs = tMs;
         try {
-          const faceResult = faceLandmarker!.detectForVideo(video, tMs);
+          // Always use a strictly increasing timestamp for MediaPipe.
+          // performance.now() is guaranteed monotonically increasing, unlike
+          // video.currentTime which can repeat (e.g. stalls, first frame = 0).
+          const mpTs = Math.max(performance.now(), lastMpTimestamp + 1);
+          lastMpTimestamp = mpTs;
+          const faceResult = faceLandmarker!.detectForVideo(video, mpTs);
           const landmarks   = faceResult.faceLandmarks?.[0] ?? [];
 
           // Build an O(1) blendshape lookup map once per sampled frame

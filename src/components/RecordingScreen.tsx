@@ -116,6 +116,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         // Module A — audio only
         moduleA.chunksRef.current = [];
         const audioStream = new MediaStream(stream.getAudioTracks());
+        // 128 kbps — kept high for Whisper transcription quality
         const recA = new MediaRecorder(audioStream, { audioBitsPerSecond: 128_000 });
         moduleA.recorderRef.current = recA;
         recA.ondataavailable = (e) => {
