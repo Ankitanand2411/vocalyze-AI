@@ -549,6 +549,7 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
   const avg = (key: keyof FrameAnalysisEntry) =>
     detected.reduce((s, f) => s + ((f[key] as number) ?? 0), 0) / detected.length;
 
+  // Face & gaze
   const eyeContact = avg("eyeContactScore");
   const headPose   = avg("headPoseScore");
   const mouthOpen  = avg("mouthOpenScore");
@@ -557,22 +558,114 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
   const pitch      = avg("headPitch");
   const roll       = avg("headRoll");
 
+  // Extended blendshapes
+  const anxiety    = avg("anxietyScore");
+  const confusion  = avg("confusionScore");
+  const stress     = avg("stressScore");
+  const frown      = avg("frownScore");
+  const squint     = avg("squintScore");
+
+  // Body pose
+  const poseFrames    = frameAnalysis.filter((f) => f.poseDetected);
+  const avgPosture    = poseFrames.length > 0
+    ? poseFrames.reduce((s, f) => s + f.postureScore, 0) / poseFrames.length : 0;
+  const avgSpine      = poseFrames.length > 0
+    ? poseFrames.reduce((s, f) => s + f.spineAngle, 0) / poseFrames.length : 0;
+  const armsCrossedPct = poseFrames.length > 0
+    ? (poseFrames.filter((f) => f.armsCrossed).length / poseFrames.length) * 100 : 0;
+
+  // Gaze zone distribution
+  const gazeTotal = frameAnalysis.length;
+  const gazeZones = ["center", "left", "right", "down", "away"] as const;
+  const gazeCounts = Object.fromEntries(
+    gazeZones.map((z) => [z, frameAnalysis.filter((f) => f.gazeZone === z).length])
+  );
+
   return (
-    <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm">
-      <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-4 flex items-center gap-1.5">
-        <span>📈</span> Session Analysis
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-        <ScoreBar label="👁 Eye Contact"   value={eyeContact} />
-        <ScoreBar label="🙂 Head Pose (Yaw)" value={headPose} />
-        <ScoreBar label="💬 Mouth Open (Speaking)" value={mouthOpen} />
-        <ScoreBar label="😄 Smile"         value={smile} />
-        <ScoreBar label="😑 Blink Rate"    value={blink} invert />
-        <ScoreBar label="↕ Head Pitch"    value={pitch} unit="°" />
-        <ScoreBar label="↔ Head Roll"     value={roll}  unit="°" />
+    <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm space-y-6">
+
+      {/* ── Face & Head ────────────────────────────────────────────────────── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <span>👤</span> Face &amp; Head
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+          <ScoreBar label="👁 Eye Contact"          value={eyeContact} />
+          <ScoreBar label="🙂 Head Pose (Yaw)"      value={headPose} />
+          <ScoreBar label="💬 Mouth Open (Speaking)" value={mouthOpen} />
+          <ScoreBar label="😄 Smile"                value={smile} />
+          <ScoreBar label="😑 Blink Rate"           value={blink} invert />
+          <ScoreBar label="↕ Head Pitch"            value={pitch} unit="°" />
+          <ScoreBar label="↔ Head Roll"             value={roll}  unit="°" />
+        </div>
       </div>
-      <p className="mt-3 text-[10px] text-[#9ca3af]">
-        Based on {detected.length} detected frames out of {frameAnalysis.length} total.
+
+      {/* ── Gaze Zone Distribution ─────────────────────────────────────────── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <span>👀</span> Gaze Zone Distribution
+        </p>
+        <div className="grid grid-cols-5 gap-1.5 text-center">
+          {gazeZones.map((zone) => {
+            const pct = gazeTotal > 0 ? Math.round((gazeCounts[zone] / gazeTotal) * 100) : 0;
+            const isGood = zone === "center";
+            return (
+              <div key={zone} className="bg-[#f4f2ef] rounded-xl p-2">
+                <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest capitalize">{zone}</p>
+                <p className={`text-sm font-semibold mt-0.5 ${isGood && pct > 50 ? "text-green-600" : !isGood && pct > 30 ? "text-amber-600" : "text-[#1a1a2e]"}`}>
+                  {pct}%
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-[#9ca3af] mt-1.5">Center &gt; 50% is ideal — means consistent camera eye contact.</p>
+      </div>
+
+      {/* ── Emotion Signals (Extended Blendshapes) ─────────────────────────── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <span>🧠</span> Emotion Signals
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+          <ScoreBar label="😟 Anxiety (brow raise)"   value={anxiety}   invert />
+          <ScoreBar label="🤔 Confusion (brow furrow)" value={confusion} invert />
+          <ScoreBar label="😬 Stress (lip press)"      value={stress}    invert />
+          <ScoreBar label="☹️ Frown"                    value={frown}     invert />
+          <ScoreBar label="😤 Squint (eye strain)"     value={squint}    invert />
+        </div>
+        <p className="text-[10px] text-[#9ca3af] mt-2">Lower is better — these signals indicate tension or discomfort.</p>
+      </div>
+
+      {/* ── Body Posture ───────────────────────────────────────────────────── */}
+      {poseFrames.length > 0 ? (
+        <div>
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <span>🧍</span> Body Posture
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            <ScoreBar label="🧍 Overall Posture"    value={avgPosture} />
+            <ScoreBar label="📐 Spine Lean"         value={avgSpine} unit="°" />
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${armsCrossedPct > 30 ? "bg-amber-400" : "bg-green-500"}`} />
+            <p className="text-xs text-[#6b7280]">
+              Arms crossed {armsCrossedPct.toFixed(0)}% of session
+              {armsCrossedPct > 30 ? " — consider open posture" : " — good open posture"}
+            </p>
+          </div>
+          <p className="text-[10px] text-[#9ca3af] mt-1">
+            Based on {poseFrames.length} frames with body detected out of {frameAnalysis.length} total.
+          </p>
+        </div>
+      ) : (
+        <div className="text-[11px] text-[#9ca3af] bg-[#f4f2ef] rounded-xl px-4 py-3">
+          🧍 Body posture data unavailable — PoseLandmarker may not have detected your full upper body. Try sitting further back from the camera.
+        </div>
+      )}
+
+      <p className="text-[10px] text-[#9ca3af]">
+        Face analysis based on {detected.length} detected frames out of {frameAnalysis.length} total.
       </p>
     </div>
   );

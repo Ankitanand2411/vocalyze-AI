@@ -333,10 +333,12 @@ export default function RecordingScreen({
   const moduleB = {
     recorderRef: useRef<MediaRecorder | null>(null),
     chunksRef: useRef<Blob[]>([]),
-    faceLandmarkerRef: useRef<unknown>(null), // typed as unknown; import is dynamic
+    faceLandmarkerRef: useRef<unknown>(null),
+    poseLandmarkerRef: useRef<unknown>(null), // PoseLandmarker — body pose
     animFrameRef: useRef<number>(0),
     frameDataRef: useRef<FrameAnalysisEntry[]>([]),
     mpReadyRef: useRef(false),
+    poseReadyRef: useRef(false),
   };
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
@@ -353,15 +355,15 @@ export default function RecordingScreen({
 
   const initModuleB_MP = useCallback(async () => {
     try {
-      const { FaceLandmarker, FilesetResolver } = await import(
+      const { FaceLandmarker, PoseLandmarker, FilesetResolver } = await import(
         "@mediapipe/tasks-vision"
       );
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
       );
 
-      // Try GPU first (faster), fall back to CPU (more compatible on Linux)
-      const createLandmarker = async (delegate: "GPU" | "CPU") =>
+      // ── FaceLandmarker (GPU → CPU fallback) ───────────────────────────────
+      const createFace = async (delegate: "GPU" | "CPU") =>
         FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
@@ -370,19 +372,43 @@ export default function RecordingScreen({
           },
           runningMode: "VIDEO",
           numFaces: 1,
-          outputFaceBlendshapes: true,  // ← enabled: gives smile/mouth/blink scores
+          outputFaceBlendshapes: true,
         });
 
       try {
-        moduleB.faceLandmarkerRef.current = await createLandmarker("GPU");
+        moduleB.faceLandmarkerRef.current = await createFace("GPU");
         console.log("[Module B] FaceLandmarker ready (GPU)");
       } catch {
         console.warn("[Module B] GPU delegate failed — retrying with CPU");
-        moduleB.faceLandmarkerRef.current = await createLandmarker("CPU");
+        moduleB.faceLandmarkerRef.current = await createFace("CPU");
         console.log("[Module B] FaceLandmarker ready (CPU fallback)");
       }
-
       moduleB.mpReadyRef.current = true;
+
+      // ── PoseLandmarker (GPU → CPU fallback) — non-fatal if fails ─────────
+      try {
+        const createPose = async (delegate: "GPU" | "CPU") =>
+          PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+              delegate,
+            },
+            runningMode: "VIDEO",
+            numPoses: 1,
+          });
+        try {
+          moduleB.poseLandmarkerRef.current = await createPose("GPU");
+          console.log("[Module B] PoseLandmarker ready (GPU)");
+        } catch {
+          moduleB.poseLandmarkerRef.current = await createPose("CPU");
+          console.log("[Module B] PoseLandmarker ready (CPU fallback)");
+        }
+        moduleB.poseReadyRef.current = true;
+      } catch (poseErr) {
+        console.warn("[Module B] PoseLandmarker failed (non-fatal):", poseErr);
+        moduleB.poseReadyRef.current = false;
+      }
     } catch (err) {
       console.error("[Module B] MediaPipe init failed entirely:", err);
       moduleB.mpReadyRef.current = false;
@@ -404,8 +430,11 @@ export default function RecordingScreen({
       rafCount++;
       const now = performance.now();
       const video = videoRef.current;
-      const landmarker = moduleB.faceLandmarkerRef.current as {
+      const faceLandmarker = moduleB.faceLandmarkerRef.current as {
         detectForVideo: (v: HTMLVideoElement, t: number) => MPResult;
+      } | null;
+      const poseLandmarker = moduleB.poseLandmarkerRef.current as {
+        detectForVideo: (v: HTMLVideoElement, t: number) => PoseResult;
       } | null;
 
       // ── Diagnostic: log state every ~1 second ──────────────────────────────
@@ -413,9 +442,11 @@ export default function RecordingScreen({
         console.log("[MP Loop] state snapshot:", {
           rafCount,
           hasVideo: !!video,
-          readyState: video?.readyState,          // needs >= 2
-          hasLandmarker: !!landmarker,
-          mpReadyRef: moduleB.mpReadyRef.current, // needs true
+          readyState: video?.readyState,
+          hasFaceLandmarker: !!faceLandmarker,
+          hasPoseLandmarker: !!poseLandmarker,
+          mpReadyRef: moduleB.mpReadyRef.current,
+          poseReadyRef: moduleB.poseReadyRef.current,
           timeSinceLastDetect: Math.round(now - lastDetectTime),
           framesCollected: moduleB.frameDataRef.current.length,
         });
@@ -423,16 +454,17 @@ export default function RecordingScreen({
 
       if (
         video &&
-        landmarker &&
+        faceLandmarker &&
         moduleB.mpReadyRef.current &&
         video.readyState >= 2 &&
         now - lastDetectTime >= TARGET_INTERVAL_MS
       ) {
         lastDetectTime = now;
         try {
-          const result    = landmarker.detectForVideo(video, now);
-          const landmarks = result.faceLandmarks?.[0]  ?? [];
-          const blendshapes = result.faceBlendshapes?.[0]?.categories ?? [];
+          // ── Face + blendshapes + gaze ───────────────────────────────────────
+          const faceResult  = faceLandmarker.detectForVideo(video, now);
+          const landmarks   = faceResult.faceLandmarks?.[0]  ?? [];
+          const blendshapes = faceResult.faceBlendshapes?.[0]?.categories ?? [];
 
           if (!firstFrameLogged) {
             firstFrameLogged = true;
@@ -443,22 +475,49 @@ export default function RecordingScreen({
             });
           }
 
-          // Draw face mesh on canvas overlay
           const canvas = canvasRef.current;
           if (canvas) drawFaceMesh(canvas, video, landmarks);
 
           const scores = scoreFrame(landmarks, blendshapes);
 
+          // ── Body pose (non-fatal) ───────────────────────────────────────────
+          let poseScores = { postureScore: 0, shoulderLevelDiff: 0, spineAngle: 0, armsCrossed: false };
+          let poseDetected = false;
+          if (poseLandmarker && moduleB.poseReadyRef.current) {
+            try {
+              const poseResult    = poseLandmarker.detectForVideo(video, now);
+              const poseLandmarks = poseResult.poseLandmarks?.[0] ?? [];
+              poseDetected = poseLandmarks.length > 0;
+              if (poseDetected) poseScores = scorePose(poseLandmarks);
+            } catch { /* pose failure is silent */ }
+          }
+
           moduleB.frameDataRef.current.push({
-            timestamp: Date.now() - startTimeRef.current,
-            eyeContactScore:  scores.eyeContactScore,
-            headPoseScore:    scores.headPoseScore,
-            faceDetected:     landmarks.length > 0,
-            mouthOpenScore:   scores.mouthOpenScore,
-            smileScore:       scores.smileScore,
-            blinkScore:       scores.blinkScore,
-            headPitch:        scores.headPitch,
-            headRoll:         scores.headRoll,
+            timestamp:          Date.now() - startTimeRef.current,
+            // face
+            eyeContactScore:    scores.eyeContactScore,
+            headPoseScore:      scores.headPoseScore,
+            faceDetected:       landmarks.length > 0,
+            headPitch:          scores.headPitch,
+            headRoll:           scores.headRoll,
+            // blendshape basics
+            mouthOpenScore:     scores.mouthOpenScore,
+            smileScore:         scores.smileScore,
+            blinkScore:         scores.blinkScore,
+            // extended blendshapes
+            anxietyScore:       scores.anxietyScore,
+            confusionScore:     scores.confusionScore,
+            stressScore:        scores.stressScore,
+            frownScore:         scores.frownScore,
+            squintScore:        scores.squintScore,
+            // gaze zone
+            gazeZone:           scores.gazeZone,
+            // body pose
+            poseDetected,
+            postureScore:       poseScores.postureScore,
+            shoulderLevelDiff:  poseScores.shoulderLevelDiff,
+            spineAngle:         poseScores.spineAngle,
+            armsCrossed:        poseScores.armsCrossed,
           });
 
           // Update live UI scores every ~500 ms
@@ -469,7 +528,8 @@ export default function RecordingScreen({
               headPose:   scores.headPoseScore,
               mouthOpen:  scores.mouthOpenScore,
               smile:      scores.smileScore,
-              blink:      scores.blinkScore,
+              posture:    poseScores.postureScore,
+              gazeZone:   scores.gazeZone,
             });
           }
         } catch (err) {
@@ -733,18 +793,27 @@ export default function RecordingScreen({
                 </span>
               </div>
               {liveScores && (
-                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2 px-3">
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2 px-3 flex-wrap">
                   {[
-                    { label: "👁 Eye",  val: liveScores.eyeContact },
-                    { label: "🙂 Head", val: liveScores.headPose },
-                    { label: "💬 Mouth",val: liveScores.mouthOpen },
-                    { label: "😄 Smile",val: liveScores.smile },
+                    { label: "👁 Eye",     val: liveScores.eyeContact, isNum: true },
+                    { label: "🙂 Head",    val: liveScores.headPose,   isNum: true },
+                    { label: "🧍 Posture", val: liveScores.posture,    isNum: true },
+                    { label: "😄 Smile",   val: liveScores.mouthOpen,  isNum: true },
                   ].map(({ label, val }) => (
                     <div key={label} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2.5 py-1">
                       <span className="text-[10px] text-white/70">{label}</span>
                       <span className="text-[10px] font-semibold text-white">{Math.round(val * 100)}%</span>
                     </div>
                   ))}
+                  {/* Gaze zone badge — text not % */}
+                  <div className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2.5 py-1">
+                    <span className="text-[10px] text-white/70">👀 Gaze</span>
+                    <span className={`text-[10px] font-semibold ${
+                      liveScores.gazeZone === "center" ? "text-green-400" : "text-amber-400"
+                    }`}>
+                      {liveScores.gazeZone}
+                    </span>
+                  </div>
                 </div>
               )}
             </>
