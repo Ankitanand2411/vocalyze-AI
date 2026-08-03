@@ -33,6 +33,10 @@ export interface FrameAnalysisEntry {
   // ── Gaze zone classification ─────────────────────────────────────────────
   gazeZone: "center" | "left" | "right" | "down" | "away"; // where eyes point
 
+  // ── Advanced metrics (Framing & Script Reading) ──────────────────────────
+  faceWidth: number;         // 0 to 1, fraction of screen width
+  isReadingScript: boolean;  // True if eyes dart left/right while head is still
+
   // ── Body pose (PoseLandmarker) ───────────────────────────────────────────
   poseDetected: boolean;
   postureScore: number;       // 0–1, higher = upright & symmetric posture

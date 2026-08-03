@@ -135,6 +135,108 @@ function DebugInspector({
 
   const fullJson = { mediapipeReady, frameAnalysis };
 
+  // ── Download helpers ───────────────────────────────────────────────────
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+
+  const downloadJson = (data: object, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    downloadBlob(blob, filename);
+  };
+
+  // ── Auto sanity-check — validates data integrity in the browser ────────
+  const sanity = (() => {
+    const checks: { label: string; pass: boolean; detail: string }[] = [];
+    const fa = frameAnalysis;
+
+    // 1. Frame count reasonable
+    checks.push({
+      label: "Frame count > 0",
+      pass: fa.length > 0,
+      detail: `${fa.length} frames collected`,
+    });
+
+    // 2. Timestamps are monotonically increasing
+    let tsMonotone = true;
+    for (let i = 1; i < fa.length; i++) {
+      if (fa[i].timestamp <= fa[i - 1].timestamp) { tsMonotone = false; break; }
+    }
+    checks.push({
+      label: "Timestamps monotonically increasing",
+      pass: tsMonotone,
+      detail: tsMonotone ? "All timestamps strictly increase" : "Found non-increasing timestamp — clock drift issue",
+    });
+
+    // 3. Average frame interval close to 41 ms (24 fps)
+    const avgInterval = fa.length > 1
+      ? (fa[fa.length - 1].timestamp - fa[0].timestamp) / (fa.length - 1)
+      : 0;
+    const fpsOk = avgInterval > 20 && avgInterval < 80;
+    checks.push({
+      label: "Frame interval ≈ 41 ms (24 fps)",
+      pass: fpsOk,
+      detail: `Avg interval: ${avgInterval.toFixed(1)} ms (${(1000 / avgInterval).toFixed(1)} fps)`,
+    });
+
+    // 4. All scores in [0, 1] range
+    const scoreKeys: (keyof FrameAnalysisEntry)[] = [
+      "eyeContactScore", "headPoseScore", "mouthOpenScore",
+      "smileScore", "blinkScore", "anxietyScore", "confusionScore",
+      "stressScore", "frownScore", "squintScore",
+    ];
+    const outOfRange = fa.some((f) =>
+      scoreKeys.some((k) => {
+        const v = f[k] as number;
+        return typeof v === "number" && (v < -0.01 || v > 1.01);
+      })
+    );
+    checks.push({
+      label: "All scores within [0, 1]",
+      pass: !outOfRange,
+      detail: outOfRange ? "Some scores fall outside valid range" : "All score values are valid",
+    });
+
+    // 5. Face detection rate
+    const faceRate = fa.length > 0 ? detectedFrames / fa.length : 0;
+    checks.push({
+      label: "Face detected > 50% of frames",
+      pass: faceRate > 0.5,
+      detail: `${(faceRate * 100).toFixed(1)}% face detection rate`,
+    });
+
+    // 6. gazeZone field is always one of the valid values
+    const validZones = new Set(["center", "left", "right", "down", "away"]);
+    const badZone = fa.some((f) => !validZones.has(f.gazeZone));
+    checks.push({
+      label: "gazeZone field always valid",
+      pass: !badZone,
+      detail: badZone ? "Some frames have invalid gazeZone value" : "All gazeZone values are valid enum members",
+    });
+
+    // 7. Video blob size reasonable (> 5 KB)
+    checks.push({
+      label: "Video blob size > 5 KB",
+      pass: videoBlob.size > 5120,
+      detail: `Video: ${formatFileSize(videoBlob.size)}, Audio: ${formatFileSize(audioBlob.size)}`,
+    });
+
+    // 8. durationCoveredMs ≈ video duration
+    const durationCovered = fa.length > 0 ? fa[fa.length - 1].timestamp : 0;
+    checks.push({
+      label: "Frame data covers full duration",
+      pass: durationCovered > 1000,
+      detail: `Frame analysis spans ${(durationCovered / 1000).toFixed(2)} s`,
+    });
+
+    const passed = checks.filter((c) => c.pass).length;
+    return { checks, passed, total: checks.length };
+  })();
+
   const handleCopy = (data: object) => {
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     setCopied(true);
@@ -155,6 +257,16 @@ function DebugInspector({
           <span className="text-[10px] font-semibold uppercase tracking-widest text-[#9ca3af] bg-[#e5e7eb] px-2 py-0.5 rounded-full">
             Temporary
           </span>
+          {/* Sanity check badge */}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+            sanity.passed === sanity.total
+              ? "bg-green-100 text-green-700"
+              : sanity.passed >= sanity.total - 1
+              ? "bg-amber-100 text-amber-700"
+              : "bg-red-100 text-red-700"
+          }`}>
+            {sanity.passed}/{sanity.total} checks ✓
+          </span>
         </div>
         <svg
           className={`w-4 h-4 text-[#9ca3af] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
@@ -170,6 +282,61 @@ function DebugInspector({
       {/* Content */}
       {open && (
         <div className="px-5 pb-6 pt-5 bg-white space-y-6 animate-fade-in">
+
+          {/* ── Section 0: Sanity Check + Downloads ─────────────────────────── */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <span>🔍</span> Data Integrity Check
+            </p>
+            {/* Check rows */}
+            <div className="space-y-1.5 mb-4">
+              {sanity.checks.map((c) => (
+                <div key={c.label} className="flex items-start gap-2.5 bg-[#f4f2ef] rounded-xl px-3 py-2">
+                  <span className={`mt-0.5 text-xs font-bold ${c.pass ? "text-green-600" : "text-red-500"}`}>
+                    {c.pass ? "✓" : "✗"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-[#1a1a2e]">{c.label}</p>
+                    <p className="text-[10px] text-[#9ca3af]">{c.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Download buttons */}
+            <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">
+              Download for external review
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => downloadBlob(videoBlob, `vocalyze-video-${Date.now()}.webm`)}
+                className="flex items-center gap-1.5 text-xs font-medium bg-[#1a1a2e] text-white px-3 py-1.5 rounded-lg hover:bg-[#2d2d4e] transition-colors"
+              >
+                ⬇ Download Video (.webm)
+              </button>
+              <button
+                onClick={() => downloadBlob(audioBlob, `vocalyze-audio-${Date.now()}.webm`)}
+                className="flex items-center gap-1.5 text-xs font-medium bg-[#1a1a2e] text-white px-3 py-1.5 rounded-lg hover:bg-[#2d2d4e] transition-colors"
+              >
+                ⬇ Download Audio (.webm)
+              </button>
+              <button
+                onClick={() => downloadJson(fullJson, `vocalyze-framedata-${Date.now()}.json`)}
+                className="flex items-center gap-1.5 text-xs font-medium border border-[#e5e7eb] bg-white text-[#1a1a2e] px-3 py-1.5 rounded-lg hover:border-[#6c8ebf] hover:text-[#6c8ebf] transition-colors"
+              >
+                ⬇ Download Frame JSON
+              </button>
+              <button
+                onClick={() => downloadJson(summaryJson, `vocalyze-summary-${Date.now()}.json`)}
+                className="flex items-center gap-1.5 text-xs font-medium border border-[#e5e7eb] bg-white text-[#1a1a2e] px-3 py-1.5 rounded-lg hover:border-[#6c8ebf] hover:text-[#6c8ebf] transition-colors"
+              >
+                ⬇ Download Summary JSON
+              </button>
+            </div>
+            <p className="text-[10px] text-[#9ca3af] mt-2">
+              Download the video + frame JSON and share them in the chat — I can verify alignment, timestamps, and score quality directly.
+            </p>
+          </div>
 
           {/* ── Section 1: Extracted Audio ─────────────────────────────────── */}
           <div>

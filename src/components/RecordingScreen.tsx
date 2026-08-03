@@ -45,6 +45,8 @@ interface LiveScores {
   smile: number;
   posture: number;
   gazeZone: string;
+  faceWidth: number;
+  isReadingScript: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,39 +57,73 @@ function formatDuration(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// ── Gaze zone classifier (from iris + eye corner landmarks) ─────────────
+// ── Gaze zone classifier — with head-yaw compensation ────────────────────
+//
+// Problem with naive iris-offset approach:
+//   When the head is slightly turned, the iris shifts in the eye socket
+//   even when the person IS looking at the camera. This causes false
+//   "left"/"right" readings.
+//
+// Fix: compute the head's yaw offset (how much the nose deviates from the
+//   mid-cheek line) and subtract that from the raw iris offset.
+//   Net result: the gaze is measured relative to where the HEAD is pointing,
+//   not relative to the absolute frame centre. If the head is turned 5° left
+//   and the iris is also shifted 5° left (still looking forward relative to
+//   the head), we correctly classify it as "center".
+//
 function classifyGazeZone(
   pts: Landmark[]
 ): "center" | "left" | "right" | "down" | "away" {
   const leftIrisIdx  = [468, 469, 470, 471];
   const rightIrisIdx = [472, 473, 474, 475];
   if (pts.length <= 475) return "away";
-  const ok = [...leftIrisIdx, ...rightIrisIdx, 33, 133, 263, 362].every((i) => pts[i]);
+  const ok = [...leftIrisIdx, ...rightIrisIdx, 33, 133, 263, 362, 1, 234, 454].every((i) => pts[i]);
   if (!ok) return "away";
 
-  // Horizontal gaze offset per eye (normalised by eye width)
-  const leftIrisX   = leftIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
-  const leftIrisY   = leftIrisIdx.reduce((s, i) => s + pts[i].y, 0) / 4;
-  const leftEyeW    = Math.abs(pts[33].x - pts[133].x) || 0.01;
-  const leftOffsetX = (leftIrisX - (pts[33].x + pts[133].x) / 2) / leftEyeW;
+  // ── Raw iris horizontal offset (normalised by eye width) ──────────────
+  const leftIrisX    = leftIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
+  const leftIrisY    = leftIrisIdx.reduce((s, i) => s + pts[i].y, 0) / 4;
+  const leftEyeW     = Math.abs(pts[33].x - pts[133].x) || 0.01;
+  const leftOffsetX  = (leftIrisX - (pts[33].x + pts[133].x) / 2) / leftEyeW;
 
   const rightIrisX   = rightIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
   const rightIrisY   = rightIrisIdx.reduce((s, i) => s + pts[i].y, 0) / 4;
   const rightEyeW    = Math.abs(pts[263].x - pts[362].x) || 0.01;
   const rightOffsetX = (rightIrisX - (pts[263].x + pts[362].x) / 2) / rightEyeW;
 
-  const avgOffsetX = (leftOffsetX + rightOffsetX) / 2;
+  const rawOffsetX = (leftOffsetX + rightOffsetX) / 2;
 
-  // Vertical: compare iris y to eye center y (normalised by eye height)
-  const leftEyeH    = Math.abs((pts[159]?.y ?? 0) - (pts[145]?.y ?? 0)) || 0.01;
-  const leftOffsetY = (leftIrisY - (pts[159]?.y ?? leftIrisY)) / leftEyeH;
-  const rightEyeH   = Math.abs((pts[386]?.y ?? 0) - (pts[374]?.y ?? 0)) || 0.01;
-  const rightOffsetY = (rightIrisY - (pts[386]?.y ?? rightIrisY)) / rightEyeH;
+  // ── Head yaw compensation ─────────────────────────────────────────────
+  // noseTip x relative to midpoint between cheeks → head turn signal.
+  // When head turns right: nose moves right of cheek midpoint → positive yaw.
+  // The iris follows the same direction. Scale factor ~0.6 found empirically.
+  const noseTip     = pts[1];
+  const leftCheek   = pts[234];
+  const rightCheek  = pts[454];
+  const cheekMidX   = (leftCheek.x + rightCheek.x) / 2;
+  const cheekSpanX  = Math.abs(leftCheek.x - rightCheek.x) || 0.1;
+  const headYaw     = (noseTip.x - cheekMidX) / cheekSpanX; // ~-0.5 to +0.5
+  const yawCorrection = headYaw * 0.55; // empirical compensation factor
+
+  const compensatedOffsetX = rawOffsetX - yawCorrection;
+
+  // ── Vertical offset ───────────────────────────────────────────────────
+  // Use upper-eyelid (159/386) vs lower-eyelid (145/374) midpoint.
+  const leftEyeMidY  = ((pts[159]?.y ?? leftIrisY) + (pts[145]?.y ?? leftIrisY)) / 2;
+  const rightEyeMidY = ((pts[386]?.y ?? rightIrisY) + (pts[374]?.y ?? rightIrisY)) / 2;
+  const leftEyeH     = Math.abs((pts[159]?.y ?? 0) - (pts[145]?.y ?? 0)) || 0.01;
+  const rightEyeH    = Math.abs((pts[386]?.y ?? 0) - (pts[374]?.y ?? 0)) || 0.01;
+  const leftOffsetY  = (leftIrisY  - leftEyeMidY)  / leftEyeH;
+  const rightOffsetY = (rightIrisY - rightEyeMidY) / rightEyeH;
   const avgOffsetY   = (leftOffsetY + rightOffsetY) / 2;
 
-  if (avgOffsetY > 0.3)  return "down";
-  if (avgOffsetX < -0.25) return "left";
-  if (avgOffsetX >  0.25) return "right";
+  // ── Classify ──────────────────────────────────────────────────────────
+  // Thresholds are deliberately generous:
+  //   ±0.35 horizontal (was ±0.25) — iris has to be noticeably off-centre
+  //   0.45  vertical   (was 0.30)  — looking down has to be pronounced
+  if (avgOffsetY   >  0.45) return "down";
+  if (compensatedOffsetX < -0.35) return "left";
+  if (compensatedOffsetX >  0.35) return "right";
   return "center";
 }
 
@@ -214,13 +250,15 @@ function scoreFrame(
   if (blendshapes && blendshapes.length > 0) {
     const find = (name: string) => blendshapes.find((c) => c.categoryName === name)?.score ?? 0;
     // basics
-    mouthOpenScore = find("mouthOpen");
+    // NOTE: MediaPipe FaceLandmarker uses "jawOpen" not "mouthOpen" for mouth aperture.
+    // We use jawOpen as primary, mouthOpen as fallback (older model versions).
+    mouthOpenScore = find("jawOpen") || find("mouthOpen");
     smileScore     = Math.min(1, find("mouthSmileLeft") + find("mouthSmileRight"));
     blinkScore     = (find("eyeBlinkLeft") + find("eyeBlinkRight")) / 2;
     // extended emotion signals
-    anxietyScore    = find("browInnerUp");  // raised inner brows = worry/stress
-    confusionScore  = (find("browDownLeft") + find("browDownRight")) / 2;  // furrowed = confused
-    stressScore     = (find("mouthPressLeft") + find("mouthPressRight")) / 2; // lip press = tension
+    anxietyScore    = find("browInnerUp");
+    confusionScore  = (find("browDownLeft") + find("browDownRight")) / 2;
+    stressScore     = (find("mouthPressLeft") + find("mouthPressRight")) / 2;
     frownScore      = (find("mouthFrownLeft") + find("mouthFrownRight")) / 2;
     squintScore     = (find("eyeSquintLeft") + find("eyeSquintRight")) / 2;
   }
@@ -228,11 +266,18 @@ function scoreFrame(
   // ── Gaze zone ─────────────────────────────────────────────────────────
   const gazeZone = classifyGazeZone(pts);
 
+  // ── Face Width (Framing) ──────────────────────────────────────────────
+  let faceWidth = 0;
+  if (pts[234] && pts[454]) {
+    // 234 is outer left cheek, 454 is outer right cheek in MediaPipe topology
+    faceWidth = Math.abs(pts[454].x - pts[234].x);
+  }
+
   return {
     eyeContactScore, headPoseScore, mouthOpenScore, smileScore, blinkScore,
     headPitch, headRoll,
     anxietyScore, confusionScore, stressScore, frownScore, squintScore,
-    gazeZone,
+    gazeZone, faceWidth,
   };
 }
 
@@ -296,7 +341,9 @@ export default function RecordingScreen({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [liveScores, setLiveScores] = useState<LiveScores | null>(null);
   const liveScoreTickRef = useRef(0);
+  const gazeHistoryRef = useRef<string[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isBlurEnabled, setIsBlurEnabled] = useState(false);
 
   // ── Shared infrastructure ─────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -335,10 +382,14 @@ export default function RecordingScreen({
     chunksRef: useRef<Blob[]>([]),
     faceLandmarkerRef: useRef<unknown>(null),
     poseLandmarkerRef: useRef<unknown>(null), // PoseLandmarker — body pose
+    segmenterRef: useRef<unknown>(null),      // ImageSegmenter — background blur
     animFrameRef: useRef<number>(0),
     frameDataRef: useRef<FrameAnalysisEntry[]>([]),
     mpReadyRef: useRef(false),
     poseReadyRef: useRef(false),
+    segmenterReadyRef: useRef(false),
+    maskBufferRef: useRef<ImageData | null>(null),
+    offCanvasRef: useRef<HTMLCanvasElement | null>(null),
   };
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
@@ -355,7 +406,7 @@ export default function RecordingScreen({
 
   const initModuleB_MP = useCallback(async () => {
     try {
-      const { FaceLandmarker, PoseLandmarker, FilesetResolver } = await import(
+      const { FaceLandmarker, PoseLandmarker, ImageSegmenter, FilesetResolver } = await import(
         "@mediapipe/tasks-vision"
       );
       const vision = await FilesetResolver.forVisionTasks(
@@ -408,6 +459,23 @@ export default function RecordingScreen({
       } catch (poseErr) {
         console.warn("[Module B] PoseLandmarker failed (non-fatal):", poseErr);
         moduleB.poseReadyRef.current = false;
+      }
+
+      // ── ImageSegmenter (CPU only for stability) ──────────────────────────
+      try {
+        moduleB.segmenterRef.current = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/selfie_segmentation.tflite",
+            delegate: "CPU",
+          },
+          runningMode: "VIDEO",
+          outputCategoryMask: true,
+          outputConfidenceMasks: false,
+        });
+        moduleB.segmenterReadyRef.current = true;
+        console.log("[Module B] ImageSegmenter ready");
+      } catch (err) {
+        console.warn("[Module B] ImageSegmenter init failed:", err);
       }
     } catch (err) {
       console.error("[Module B] MediaPipe init failed entirely:", err);
@@ -473,9 +541,61 @@ export default function RecordingScreen({
               blendshapeCount: blendshapes.length,
               faceDetected: landmarks.length > 0,
             });
+            // Log all blendshape names so we can verify the exact API names
+            if (blendshapes.length > 0) {
+              console.log("[MP Blendshapes] Available names:", blendshapes.map((b) => b.categoryName));
+              console.log("[MP Blendshapes] jawOpen:", blendshapes.find((b) => b.categoryName === "jawOpen")?.score ?? "NOT FOUND");
+              console.log("[MP Blendshapes] mouthOpen:", blendshapes.find((b) => b.categoryName === "mouthOpen")?.score ?? "NOT FOUND");
+            }
           }
 
           const canvas = canvasRef.current;
+
+          // ── Background Blur (ImageSegmenter) ─────────────────────────────
+          if (canvas && ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (isBlurEnabled && segmenter && moduleB.segmenterReadyRef.current) {
+              try {
+                const segResult = segmenter.segmentForVideo(video, now);
+                if (segResult.categoryMask) {
+                  const mask = segResult.categoryMask.getAsUint8Array();
+                  const w = segResult.categoryMask.width;
+                  const h = segResult.categoryMask.height;
+                  
+                  // Initialize buffers if needed
+                  if (!moduleB.maskBufferRef.current || moduleB.maskBufferRef.current.width !== w) {
+                    moduleB.maskBufferRef.current = new ImageData(w, h);
+                    moduleB.offCanvasRef.current = document.createElement("canvas");
+                    moduleB.offCanvasRef.current.width = w;
+                    moduleB.offCanvasRef.current.height = h;
+                  }
+                  
+                  const imgData = moduleB.maskBufferRef.current;
+                  const data = imgData.data;
+                  // Fast iteration to set alpha channel based on segmentation mask
+                  for (let i = 0; i < mask.length; i++) {
+                    data[i * 4 + 3] = mask[i] > 0 ? 255 : 0; 
+                  }
+                  
+                  const offCanvas = moduleB.offCanvasRef.current!;
+                  const offCtx = offCanvas.getContext("2d")!;
+                  offCtx.putImageData(imgData, 0, 0);
+                  
+                  // Draw scaled mask to main canvas
+                  ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+                  // Composite video inside the mask (leaving the rest transparent)
+                  ctx.globalCompositeOperation = "source-in";
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  // Reset for face mesh
+                  ctx.globalCompositeOperation = "source-over";
+                }
+              } catch (segErr) {
+                // Ignore segmenter errors
+              }
+            }
+          }
+
           if (canvas) drawFaceMesh(canvas, video, landmarks);
 
           const scores = scoreFrame(landmarks, blendshapes);
@@ -486,10 +606,42 @@ export default function RecordingScreen({
           if (poseLandmarker && moduleB.poseReadyRef.current) {
             try {
               const poseResult    = poseLandmarker.detectForVideo(video, now);
-              const poseLandmarks = poseResult.poseLandmarks?.[0] ?? [];
+              // BUG FIX: The MediaPipe PoseLandmarkerResult property is `.landmarks`, not `.poseLandmarks`
+              // (Unlike FaceLandmarker which uses `.faceLandmarks`)
+              const poseLandmarks = poseResult.landmarks?.[0] ?? [];
               poseDetected = poseLandmarks.length > 0;
-              if (poseDetected) poseScores = scorePose(poseLandmarks);
-            } catch { /* pose failure is silent */ }
+              if (poseDetected) {
+                poseScores = scorePose(poseLandmarks);
+                // Log first successful pose detection
+                if (moduleB.frameDataRef.current.filter((f) => f.poseDetected).length === 0) {
+                  console.log("[MP Loop] 🧍 First pose detected — landmark count:", poseLandmarks.length);
+                }
+              } else if (rafCount % 120 === 0) {
+                // Log every ~2s if pose isn't being detected — helps diagnose camera-distance issues
+                console.warn("[MP Loop] 🧍 Pose not detected — is upper body visible in frame? poseLandmarks:", poseLandmarks.length);
+              }
+            } catch (poseErr) {
+              if (moduleB.frameDataRef.current.length < 5) {
+                console.error("[MP Loop] 🧍 Pose detectForVideo threw:", poseErr);
+              }
+            }
+          }
+          // ── Script Reading Detection ──────────────────────────────────
+          gazeHistoryRef.current.push(scores.gazeZone);
+          if (gazeHistoryRef.current.length > 40) gazeHistoryRef.current.shift();
+          
+          let isReadingScript = false;
+          // Only check if we have enough history and the head is relatively still
+          if (gazeHistoryRef.current.length === 40 && scores.headPoseScore > 0.8) {
+             const hist = gazeHistoryRef.current;
+             let switches = 0;
+             for (let i = 1; i < hist.length; i++) {
+                if (hist[i] !== hist[i-1] && (hist[i] === "left" || hist[i] === "right")) {
+                   switches++;
+                }
+             }
+             // If eyes darted side-to-side 4+ times in the last ~1.5 seconds
+             isReadingScript = switches >= 4;
           }
 
           moduleB.frameDataRef.current.push({
@@ -512,6 +664,9 @@ export default function RecordingScreen({
             squintScore:        scores.squintScore,
             // gaze zone
             gazeZone:           scores.gazeZone,
+            // advanced
+            faceWidth:          scores.faceWidth,
+            isReadingScript,
             // body pose
             poseDetected,
             postureScore:       poseScores.postureScore,
@@ -530,6 +685,8 @@ export default function RecordingScreen({
               smile:      scores.smileScore,
               posture:    poseScores.postureScore,
               gazeZone:   scores.gazeZone,
+              faceWidth:  scores.faceWidth,
+              isReadingScript,
             });
           }
         } catch (err) {
@@ -562,9 +719,18 @@ export default function RecordingScreen({
     async function boot() {
       try {
         // ── Step 1: request camera + mic ─────────────────────────────────────
+        // We request 720p (1280x720) instead of 360p. 
+        // Why? Requesting low resolutions often causes the browser to digitally 
+        // crop the center of the webcam sensor. We need the full wide-angle view
+        // so that the shoulders/torso are visible for PoseLandmarker.
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 360, frameRate: 24 },
-          audio: true,
+          video: { width: 1280, height: 720, frameRate: 24 },
+          audio: {
+            sampleRate: 48000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
 
@@ -586,10 +752,10 @@ export default function RecordingScreen({
 
         // ── Step 3: wire up both recorders ───────────────────────────────────
 
-        // Module A — audio only, lean bitrate (clean signal for Whisper)
+        // Module A — audio only, high quality (128 kbps) for Whisper/Librosa
         moduleA.chunksRef.current = [];
         const audioStream = new MediaStream(stream.getAudioTracks());
-        const recA = new MediaRecorder(audioStream, { audioBitsPerSecond: 64_000 });
+        const recA = new MediaRecorder(audioStream, { audioBitsPerSecond: 128_000 });
         moduleA.recorderRef.current = recA;
         recA.ondataavailable = (e) => {
           if (e.data.size > 0) moduleA.chunksRef.current.push(e.data);
@@ -600,7 +766,7 @@ export default function RecordingScreen({
         moduleB.frameDataRef.current = [];
         const recB = new MediaRecorder(stream, {
           videoBitsPerSecond: 800_000,
-          audioBitsPerSecond: 64_000,
+          audioBitsPerSecond: 128_000,
         });
         moduleB.recorderRef.current = recB;
         recB.ondataavailable = (e) => {
@@ -767,6 +933,8 @@ export default function RecordingScreen({
             autoPlay
             playsInline
             muted
+            // Apply CSS blur to the raw video element if background blur is enabled
+            style={{ filter: isBlurEnabled ? 'blur(12px)' : 'none', transition: 'filter 0.3s ease' }}
             className="w-full h-full object-cover"
             aria-label="Live camera preview"
           />
@@ -786,12 +954,52 @@ export default function RecordingScreen({
           {/* Recording timer + live scores */}
           {state === "recording" && (
             <>
-              <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
-                <span className="text-white text-xs font-medium tabular-nums">
-                  {formatDuration(elapsedMs)}
-                </span>
+              {/* Top Controls */}
+              <div className="absolute top-4 left-4 flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
+                  <span className="text-white text-xs font-medium tabular-nums">
+                    {formatDuration(elapsedMs)}
+                  </span>
+                </div>
+                
+                {/* Blur Toggle */}
+                {moduleB.segmenterReadyRef.current && (
+                  <button
+                    onClick={() => setIsBlurEnabled(!isBlurEnabled)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors ${
+                      isBlurEnabled 
+                        ? "bg-[#6c8ebf] text-white" 
+                        : "bg-black/30 backdrop-blur-sm text-white/70 hover:bg-black/50"
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Blur BG
+                  </button>
+                )}
               </div>
+              
+              {/* Warnings */}
+              <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                {liveScores?.isReadingScript && (
+                  <div className="bg-red-500/90 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse">
+                    👀 Reading Script?
+                  </div>
+                )}
+                {liveScores && liveScores.faceWidth > 0.6 && (
+                  <div className="bg-amber-500/90 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
+                    ⚠️ Move Back
+                  </div>
+                )}
+                {liveScores && liveScores.faceWidth < 0.15 && liveScores.faceWidth > 0 && (
+                  <div className="bg-amber-500/90 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
+                    ⚠️ Move Closer
+                  </div>
+                )}
+              </div>
+
               {liveScores && (
                 <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2 px-3 flex-wrap">
                   {[
