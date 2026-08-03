@@ -27,7 +27,7 @@ type MPResult = {
   faceBlendshapes?: { categories: BlendshapeCategory[] }[];
 };
 type PoseResult = {
-  poseLandmarks?: Landmark[][];
+  landmarks?: Landmark[][];
 };
 // 33 MediaPipe Pose landmark indices we care about
 const POSE = {
@@ -193,12 +193,15 @@ function scoreFrame(
   squintScore: number;
   // gaze zone
   gazeZone: "center" | "left" | "right" | "down" | "away";
+  // framing
+  faceWidth: number;
 } {
   const zero = {
     eyeContactScore: 0, headPoseScore: 0, mouthOpenScore: 0, smileScore: 0,
     blinkScore: 0, headPitch: 0, headRoll: 0,
     anxietyScore: 0, confusionScore: 0, stressScore: 0, frownScore: 0, squintScore: 0,
     gazeZone: "away" as const,
+    faceWidth: 0,
   };
   if (!landmarks || landmarks.length === 0) return zero;
   const pts = landmarks;
@@ -550,6 +553,8 @@ export default function RecordingScreen({
           }
 
           const canvas = canvasRef.current;
+          const ctx = canvas?.getContext("2d");
+          const segmenter = moduleB.segmenterRef.current as any;
 
           // ── Background Blur (ImageSegmenter) ─────────────────────────────
           if (canvas && ctx) {
