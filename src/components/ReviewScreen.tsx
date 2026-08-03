@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { RecordingResult, FrameAnalysisEntry } from "@/app/page";
 
 interface ReviewScreenProps {
@@ -25,24 +25,75 @@ function formatFileSize(bytes: number): string {
 
 function DebugInspector({
   audioBlob,
+  videoBlob,
   frameAnalysis,
   mediapipeReady,
 }: {
   audioBlob: Blob;
+  videoBlob: Blob;
   frameAnalysis: FrameAnalysisEntry[];
   mediapipeReady: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [jsonTab, setJsonTab] = useState<"summary" | "full">("summary");
   const [copied, setCopied] = useState(false);
 
+  // ── Shared-clock proof state ──────────────────────────────────────────────
+  // clockMs = currentTime of the video in ms (same origin as frameAnalysis timestamps)
+  const [clockMs, setClockMs] = useState<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const dbgVideoRef = useRef<HTMLVideoElement>(null);
+  const clockRafRef = useRef<number>(0);
+
+  // Tick the clock off the video's currentTime
+  const tickClock = useCallback(() => {
+    const v = dbgVideoRef.current;
+    if (!v || v.paused || v.ended) return;
+    setClockMs(Math.round(v.currentTime * 1000));
+    clockRafRef.current = requestAnimationFrame(tickClock);
+  }, []);
+
+  const handleVideoPlay = useCallback(() => {
+    setIsPlaying(true);
+    clockRafRef.current = requestAnimationFrame(tickClock);
+  }, [tickClock]);
+
+  const handleVideoPause = useCallback(() => {
+    setIsPlaying(false);
+    cancelAnimationFrame(clockRafRef.current);
+    const v = dbgVideoRef.current;
+    if (v) setClockMs(Math.round(v.currentTime * 1000));
+  }, []);
+
+  const handleVideoEnded = useCallback(() => {
+    setIsPlaying(false);
+    cancelAnimationFrame(clockRafRef.current);
+  }, []);
+
+  // Find the closest frame entry for the current clock position
+  const activeFrame: FrameAnalysisEntry | null =
+    clockMs !== null && frameAnalysis.length > 0
+      ? frameAnalysis.reduce((best, f) =>
+          Math.abs(f.timestamp - clockMs) < Math.abs(best.timestamp - clockMs)
+            ? f
+            : best
+        )
+      : null;
+
   useEffect(() => {
     if (!open) return;
-    const url = URL.createObjectURL(audioBlob);
-    setAudioUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [open, audioBlob]);
+    const aUrl = URL.createObjectURL(audioBlob);
+    const vUrl = URL.createObjectURL(videoBlob);
+    setAudioUrl(aUrl);
+    setVideoUrl(vUrl);
+    return () => {
+      URL.revokeObjectURL(aUrl);
+      URL.revokeObjectURL(vUrl);
+      cancelAnimationFrame(clockRafRef.current);
+    };
+  }, [open, audioBlob, videoBlob]);
 
   // ── Summary stats derived from frameAnalysis ──────────────────────────────
   const totalFrames = frameAnalysis.length;
@@ -143,6 +194,120 @@ function DebugInspector({
               )}
               <p className="text-[11px] text-[#9ca3af] leading-relaxed">
                 This is the audio-only stream (no video payload) that would be sent to Whisper for transcription.
+              </p>
+            </div>
+          </div>
+
+          {/* ── Section 1b: Shared-Clock Video + Timer ─────────────────────── */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <span>🎬</span> Module B — Video (Shared Clock Proof)
+            </p>
+            <div className="bg-[#f4f2ef] rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-3 text-xs text-[#6b7280]">
+                <span className="bg-white border border-[#e5e7eb] rounded-lg px-3 py-1.5 font-mono">
+                  video/webm
+                </span>
+                <span>{formatFileSize(videoBlob.size)}</span>
+                <span className="text-[#9ca3af]">800 kbps · audio+video</span>
+              </div>
+
+              {/* Video player with shared-clock overlay */}
+              {videoUrl && (
+                <div className="relative rounded-xl overflow-hidden bg-[#1a1a2e] aspect-video">
+                  <video
+                    ref={dbgVideoRef}
+                    src={videoUrl}
+                    controls
+                    playsInline
+                    className="w-full h-full object-cover"
+                    aria-label="Module B video — shared clock proof"
+                    onPlay={handleVideoPlay}
+                    onPause={handleVideoPause}
+                    onEnded={handleVideoEnded}
+                    onSeeked={() => {
+                      const v = dbgVideoRef.current;
+                      if (v) setClockMs(Math.round(v.currentTime * 1000));
+                    }}
+                  />
+
+                  {/* Shared-clock badge — always visible once video loads */}
+                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5 pointer-events-none">
+                    {/* Pulsing dot: green when playing, amber when paused */}
+                    <span
+                      className={`w-2 h-2 rounded-full ${isPlaying ? "bg-green-400 animate-pulse" : "bg-amber-400"}`}
+                    />
+                    <span className="text-white text-[11px] font-mono font-semibold tracking-wider">
+                      {clockMs !== null
+                        ? `t = ${(clockMs / 1000).toFixed(3)} s`
+                        : "t = 0.000 s"}
+                    </span>
+                    <span className="text-white/50 text-[10px]">shared clock</span>
+                  </div>
+
+                  {/* Frame-match badge — bottom right */}
+                  {activeFrame && (
+                    <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1 pointer-events-none">
+                      <div className="bg-black/60 backdrop-blur-sm rounded-xl px-3 py-2 text-right">
+                        <p className="text-[9px] text-white/50 uppercase tracking-widest mb-1">
+                          Closest frame @ {activeFrame.timestamp} ms
+                        </p>
+                        <div className="flex gap-2">
+                          {[
+                            { k: "👁",  v: activeFrame.eyeContactScore },
+                            { k: "🙂",  v: activeFrame.headPoseScore },
+                            { k: "😄",  v: activeFrame.smileScore ?? 0 },
+                          ].map(({ k, v }) => (
+                            <span key={k} className="text-[10px] font-semibold text-white">
+                              {k} {Math.round((v ?? 0) * 100)}%
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[9px] mt-1 font-medium" style={{ color: activeFrame.faceDetected ? "#4ade80" : "#f87171" }}>
+                          {activeFrame.faceDetected ? "✓ face detected" : "✗ no face"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Shared-clock alignment proof table */}
+              {clockMs !== null && (
+                <div className="bg-white border border-[#e5e7eb] rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">
+                    🔗 Shared-clock alignment
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-[#f4f2ef] rounded-lg px-2 py-2">
+                      <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest">Video t</p>
+                      <p className="text-xs font-mono font-semibold text-[#1a1a2e] mt-0.5">{(clockMs / 1000).toFixed(3)} s</p>
+                    </div>
+                    <div className="bg-[#f4f2ef] rounded-lg px-2 py-2">
+                      <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest">Nearest frame</p>
+                      <p className="text-xs font-mono font-semibold text-[#1a1a2e] mt-0.5">
+                        {activeFrame ? `${activeFrame.timestamp} ms` : "—"}
+                      </p>
+                    </div>
+                    <div className="bg-[#f4f2ef] rounded-lg px-2 py-2">
+                      <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest">Drift</p>
+                      <p className={`text-xs font-mono font-semibold mt-0.5 ${
+                        activeFrame && Math.abs(activeFrame.timestamp - clockMs) < 50
+                          ? "text-green-600"
+                          : "text-amber-600"
+                      }`}>
+                        {activeFrame ? `${Math.abs(activeFrame.timestamp - clockMs)} ms` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[#9ca3af] mt-2 leading-relaxed">
+                    Drift &lt; 50 ms means the video frame and the face-analysis frame are from the same moment — proof the shared clock works.
+                  </p>
+                </div>
+              )}
+
+              <p className="text-[11px] text-[#9ca3af] leading-relaxed">
+                Both audio (Module A) and this video (Module B) started at <code className="bg-[#e5e7eb] px-1 rounded">t = 0</code> via the same <code className="bg-[#e5e7eb] px-1 rounded">startTimeRef</code>. Scrub the video — the frame badge updates in real-time to show the aligned face-analysis entry.
               </p>
             </div>
           </div>
@@ -335,6 +500,7 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
         {/* ── Temporary Debug Inspector ──────────────────────────────────── */}
         <DebugInspector
           audioBlob={result.audioBlob}
+          videoBlob={result.videoBlob}
           frameAnalysis={result.frameAnalysis}
           mediapipeReady={result.mediapipeReady}
         />

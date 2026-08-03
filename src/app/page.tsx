@@ -10,16 +10,35 @@ export type AppScreen = "landing" | "topic" | "recording" | "review";
 
 export interface FrameAnalysisEntry {
   timestamp: number;       // ms since recording start
+
+  // ── Face: gaze & pose ───────────────────────────────────────────────────
   eyeContactScore: number; // 0–1, higher = looking at camera
-  headPoseScore: number;   // 0–1, higher = facing forward
+  headPoseScore: number;   // 0–1, higher = facing forward (yaw)
   faceDetected: boolean;
-  // ── New: blendshape-derived scores ──
+  headPitch: number;       // degrees, + = looking down
+  headRoll: number;        // degrees, head tilt
+
+  // ── Face: blendshape basics ─────────────────────────────────────────────
   mouthOpenScore: number;  // 0–1, speaking indicator
   smileScore: number;      // 0–1, smile intensity
   blinkScore: number;      // 0–1, both eyes closed = 1
-  // ── New: head angles from landmarks ──
-  headPitch: number;       // degrees, + = looking down
-  headRoll: number;        // degrees, head tilt
+
+  // ── Face: extended blendshape emotion signals ───────────────────────────
+  anxietyScore: number;    // browInnerUp  — raised inner brows = stress/worry
+  confusionScore: number;  // browDown avg — furrowed brows = confusion
+  stressScore: number;     // mouthPress avg — lip compression = tension
+  frownScore: number;      // mouthFrown avg — negative affect
+  squintScore: number;     // eyeSquint avg — discomfort / focus strain
+
+  // ── Gaze zone classification ─────────────────────────────────────────────
+  gazeZone: "center" | "left" | "right" | "down" | "away"; // where eyes point
+
+  // ── Body pose (PoseLandmarker) ───────────────────────────────────────────
+  poseDetected: boolean;
+  postureScore: number;       // 0–1, higher = upright & symmetric posture
+  shoulderLevelDiff: number;  // |left_shoulder_y - right_shoulder_y|, 0 = even
+  spineAngle: number;         // degrees lean from vertical (0 = upright)
+  armsCrossed: boolean;       // rough detection from wrist vs torso positions
 }
 
 export interface RecordingResult {

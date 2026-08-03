@@ -19,20 +19,32 @@ type RecordingState =
   | "error_permission"
   | "error_support";
 
-// MediaPipe FaceLandmarker returns landmarks as {x, y, z} objects,
-// NOT number[] tuples — this was the source of the null-score bug.
+// MediaPipe FaceLandmarker returns landmarks as {x, y, z} objects.
 type Landmark = { x: number; y: number; z: number };
 type BlendshapeCategory = { categoryName: string; score: number };
 type MPResult = {
   faceLandmarks?: Landmark[][];
   faceBlendshapes?: { categories: BlendshapeCategory[] }[];
 };
+type PoseResult = {
+  poseLandmarks?: Landmark[][];
+};
+// 33 MediaPipe Pose landmark indices we care about
+const POSE = {
+  leftShoulder: 11, rightShoulder: 12,
+  leftElbow: 13,   rightElbow: 14,
+  leftWrist: 15,   rightWrist: 16,
+  leftHip: 23,     rightHip: 24,
+  nose: 0,
+} as const;
+
 interface LiveScores {
   eyeContact: number;
   headPose: number;
   mouthOpen: number;
   smile: number;
-  blink: number;
+  posture: number;
+  gazeZone: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +53,89 @@ function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// ── Gaze zone classifier (from iris + eye corner landmarks) ─────────────
+function classifyGazeZone(
+  pts: Landmark[]
+): "center" | "left" | "right" | "down" | "away" {
+  const leftIrisIdx  = [468, 469, 470, 471];
+  const rightIrisIdx = [472, 473, 474, 475];
+  if (pts.length <= 475) return "away";
+  const ok = [...leftIrisIdx, ...rightIrisIdx, 33, 133, 263, 362].every((i) => pts[i]);
+  if (!ok) return "away";
+
+  // Horizontal gaze offset per eye (normalised by eye width)
+  const leftIrisX   = leftIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
+  const leftIrisY   = leftIrisIdx.reduce((s, i) => s + pts[i].y, 0) / 4;
+  const leftEyeW    = Math.abs(pts[33].x - pts[133].x) || 0.01;
+  const leftOffsetX = (leftIrisX - (pts[33].x + pts[133].x) / 2) / leftEyeW;
+
+  const rightIrisX   = rightIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
+  const rightIrisY   = rightIrisIdx.reduce((s, i) => s + pts[i].y, 0) / 4;
+  const rightEyeW    = Math.abs(pts[263].x - pts[362].x) || 0.01;
+  const rightOffsetX = (rightIrisX - (pts[263].x + pts[362].x) / 2) / rightEyeW;
+
+  const avgOffsetX = (leftOffsetX + rightOffsetX) / 2;
+
+  // Vertical: compare iris y to eye center y (normalised by eye height)
+  const leftEyeH    = Math.abs((pts[159]?.y ?? 0) - (pts[145]?.y ?? 0)) || 0.01;
+  const leftOffsetY = (leftIrisY - (pts[159]?.y ?? leftIrisY)) / leftEyeH;
+  const rightEyeH   = Math.abs((pts[386]?.y ?? 0) - (pts[374]?.y ?? 0)) || 0.01;
+  const rightOffsetY = (rightIrisY - (pts[386]?.y ?? rightIrisY)) / rightEyeH;
+  const avgOffsetY   = (leftOffsetY + rightOffsetY) / 2;
+
+  if (avgOffsetY > 0.3)  return "down";
+  if (avgOffsetX < -0.25) return "left";
+  if (avgOffsetX >  0.25) return "right";
+  return "center";
+}
+
+// ── Body pose scorer (from PoseLandmarker 33 landmarks) ──────────────────
+function scorePose(poseLandmarks: Landmark[]): {
+  postureScore: number;
+  shoulderLevelDiff: number;
+  spineAngle: number;
+  armsCrossed: boolean;
+} {
+  const zero = { postureScore: 0, shoulderLevelDiff: 0, spineAngle: 0, armsCrossed: false };
+  if (!poseLandmarks || poseLandmarks.length < 25) return zero;
+  const lSh = poseLandmarks[POSE.leftShoulder];
+  const rSh = poseLandmarks[POSE.rightShoulder];
+  const lHip = poseLandmarks[POSE.leftHip];
+  const rHip = poseLandmarks[POSE.rightHip];
+  const lWr = poseLandmarks[POSE.leftWrist];
+  const rWr = poseLandmarks[POSE.rightWrist];
+  if (!lSh || !rSh || !lHip || !rHip) return zero;
+
+  // Shoulder level diff (0 = perfectly even)
+  const shoulderLevelDiff = Math.abs(lSh.y - rSh.y);
+
+  // Spine angle: angle between mid-shoulder and mid-hip from vertical
+  const midShX = (lSh.x + rSh.x) / 2;
+  const midShY = (lSh.y + rSh.y) / 2;
+  const midHiX = (lHip.x + rHip.x) / 2;
+  const midHiY = (lHip.y + rHip.y) / 2;
+  const spineAngle = Math.abs(
+    Math.atan2(midShX - midHiX, midHiY - midShY) * (180 / Math.PI)
+  );
+
+  // Arms crossed: both wrists are between the shoulders horizontally
+  const shoulderMinX = Math.min(lSh.x, rSh.x);
+  const shoulderMaxX = Math.max(lSh.x, rSh.x);
+  const armsCrossed =
+    !!lWr && !!rWr &&
+    lWr.x > shoulderMinX && lWr.x < shoulderMaxX &&
+    rWr.x > shoulderMinX && rWr.x < shoulderMaxX &&
+    (lWr.y < lSh.y + 0.1) && (rWr.y < rSh.y + 0.1); // wrists near torso height
+
+  // Posture score: penalise uneven shoulders and spine lean
+  const shoulderPenalty = Math.min(1, shoulderLevelDiff / 0.06);
+  const spinePenalty    = Math.min(1, spineAngle / 15);
+  const crossedPenalty  = armsCrossed ? 0.3 : 0;
+  const postureScore    = Math.max(0, 1 - shoulderPenalty * 0.4 - spinePenalty * 0.4 - crossedPenalty);
+
+  return { postureScore, shoulderLevelDiff, spineAngle, armsCrossed };
 }
 
 function scoreFrame(
@@ -54,8 +149,21 @@ function scoreFrame(
   blinkScore: number;
   headPitch: number;
   headRoll: number;
+  // extended blendshapes
+  anxietyScore: number;
+  confusionScore: number;
+  stressScore: number;
+  frownScore: number;
+  squintScore: number;
+  // gaze zone
+  gazeZone: "center" | "left" | "right" | "down" | "away";
 } {
-  const zero = { eyeContactScore: 0, headPoseScore: 0, mouthOpenScore: 0, smileScore: 0, blinkScore: 0, headPitch: 0, headRoll: 0 };
+  const zero = {
+    eyeContactScore: 0, headPoseScore: 0, mouthOpenScore: 0, smileScore: 0,
+    blinkScore: 0, headPitch: 0, headRoll: 0,
+    anxietyScore: 0, confusionScore: 0, stressScore: 0, frownScore: 0, squintScore: 0,
+    gazeZone: "away" as const,
+  };
   if (!landmarks || landmarks.length === 0) return zero;
   const pts = landmarks;
 
@@ -69,7 +177,7 @@ function scoreFrame(
     headPoseScore = Math.max(0, 1 - Math.abs(noseTip.x - faceCenterX) / 0.12);
   }
 
-  // ── Eye contact / iris gaze ──────────────────────────────────────────
+  // ── Eye contact (iris gaze offset) ──────────────────────────────────
   let eyeContactScore = 0.5;
   const leftIrisIdx  = [468, 469, 470, 471];
   const rightIrisIdx = [472, 473, 474, 475];
@@ -84,7 +192,7 @@ function scoreFrame(
     eyeContactScore  = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.6);
   }
 
-  // ── Pitch (up/down) from landmark geometry ───────────────────────────
+  // ── Pitch ─────────────────────────────────────────────────────────────
   let headPitch = 0;
   const foreheadTop = pts[10];
   const chin        = pts[152];
@@ -93,23 +201,39 @@ function scoreFrame(
     if (faceH > 0) headPitch = ((noseTip.y - foreheadTop.y) / faceH - 0.45) * 60;
   }
 
-  // ── Roll (head tilt) from eye-to-eye angle ───────────────────────────
+  // ── Roll ──────────────────────────────────────────────────────────────
   let headRoll = 0;
   const lEyeInner = pts[133];
   const rEyeInner = pts[362];
   if (lEyeInner && rEyeInner)
     headRoll = Math.atan2(rEyeInner.y - lEyeInner.y, rEyeInner.x - lEyeInner.x) * (180 / Math.PI);
 
-  // ── Blendshapes ──────────────────────────────────────────────────────
+  // ── Blendshapes ────────────────────────────────────────────────────────
   let mouthOpenScore = 0, smileScore = 0, blinkScore = 0;
+  let anxietyScore = 0, confusionScore = 0, stressScore = 0, frownScore = 0, squintScore = 0;
   if (blendshapes && blendshapes.length > 0) {
     const find = (name: string) => blendshapes.find((c) => c.categoryName === name)?.score ?? 0;
+    // basics
     mouthOpenScore = find("mouthOpen");
     smileScore     = Math.min(1, find("mouthSmileLeft") + find("mouthSmileRight"));
     blinkScore     = (find("eyeBlinkLeft") + find("eyeBlinkRight")) / 2;
+    // extended emotion signals
+    anxietyScore    = find("browInnerUp");  // raised inner brows = worry/stress
+    confusionScore  = (find("browDownLeft") + find("browDownRight")) / 2;  // furrowed = confused
+    stressScore     = (find("mouthPressLeft") + find("mouthPressRight")) / 2; // lip press = tension
+    frownScore      = (find("mouthFrownLeft") + find("mouthFrownRight")) / 2;
+    squintScore     = (find("eyeSquintLeft") + find("eyeSquintRight")) / 2;
   }
 
-  return { eyeContactScore, headPoseScore, mouthOpenScore, smileScore, blinkScore, headPitch, headRoll };
+  // ── Gaze zone ─────────────────────────────────────────────────────────
+  const gazeZone = classifyGazeZone(pts);
+
+  return {
+    eyeContactScore, headPoseScore, mouthOpenScore, smileScore, blinkScore,
+    headPitch, headRoll,
+    anxietyScore, confusionScore, stressScore, frownScore, squintScore,
+    gazeZone,
+  };
 }
 
 // ─── Canvas face-mesh drawing ─────────────────────────────────────────────────
