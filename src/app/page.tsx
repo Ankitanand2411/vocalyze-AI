@@ -13,6 +13,13 @@ export interface FrameAnalysisEntry {
   eyeContactScore: number; // 0–1, higher = looking at camera
   headPoseScore: number;   // 0–1, higher = facing forward
   faceDetected: boolean;
+  // ── New: blendshape-derived scores ──
+  mouthOpenScore: number;  // 0–1, speaking indicator
+  smileScore: number;      // 0–1, smile intensity
+  blinkScore: number;      // 0–1, both eyes closed = 1
+  // ── New: head angles from landmarks ──
+  headPitch: number;       // degrees, + = looking down
+  headRoll: number;        // degrees, head tilt
 }
 
 export interface RecordingResult {

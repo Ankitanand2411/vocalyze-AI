@@ -60,13 +60,24 @@ function DebugInspector({
           .reduce((s, f) => s + f.headPoseScore, 0) / detectedFrames
       : 0;
 
+  const avgMouth  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.mouthOpenScore ?? 0), 0) / detectedFrames : 0;
+  const avgSmile  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.smileScore ?? 0), 0) / detectedFrames : 0;
+  const avgBlink  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.blinkScore ?? 0), 0) / detectedFrames : 0;
+  const avgPitch  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.headPitch ?? 0), 0) / detectedFrames : 0;
+  const avgRoll   = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.headRoll ?? 0), 0) / detectedFrames : 0;
+
   const summaryJson = {
     mediapipeReady,
     totalFrames,
     detectedFrames,
     detectionRate: totalFrames > 0 ? `${((detectedFrames / totalFrames) * 100).toFixed(1)}%` : "N/A",
     averageEyeContactScore: parseFloat(avgEye.toFixed(3)),
-    averageHeadPoseScore: parseFloat(avgHead.toFixed(3)),
+    averageHeadPoseScore:   parseFloat(avgHead.toFixed(3)),
+    averageMouthOpenScore:  parseFloat(avgMouth.toFixed(3)),
+    averageSmileScore:      parseFloat(avgSmile.toFixed(3)),
+    averageBlinkScore:      parseFloat(avgBlink.toFixed(3)),
+    averageHeadPitchDeg:    parseFloat(avgPitch.toFixed(1)),
+    averageHeadRollDeg:     parseFloat(avgRoll.toFixed(1)),
     durationCoveredMs: totalFrames > 0 ? frameAnalysis[totalFrames - 1].timestamp : 0,
     sampleFrames: frameAnalysis.slice(0, 5),
   };
@@ -316,6 +327,11 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
           </button>
         </div>
 
+        {/* ── Session Score Panel ────────────────────────────────────────── */}
+        {result.mediapipeReady && result.frameAnalysis.length > 0 && (
+          <ScorePanel frameAnalysis={result.frameAnalysis} />
+        )}
+
         {/* ── Temporary Debug Inspector ──────────────────────────────────── */}
         <DebugInspector
           audioBlob={result.audioBlob}
@@ -334,6 +350,64 @@ function InfoTile({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="text-sm font-semibold text-[#1a1a2e]">{value}</p>
+    </div>
+  );
+}
+
+// ─── Score Panel ──────────────────────────────────────────────────────────────
+
+function ScoreBar({ label, value, unit = "%", invert = false }: {
+  label: string; value: number; unit?: string; invert?: boolean;
+}) {
+  const pct   = unit === "°" ? Math.min(100, Math.abs(value) / 30 * 100) : Math.round(value * 100);
+  const display = unit === "°" ? `${value.toFixed(1)}°` : `${pct}%`;
+  const color = invert
+    ? pct > 60 ? "bg-[#b45309]" : pct > 30 ? "bg-yellow-400" : "bg-green-500"
+    : pct > 65 ? "bg-green-500" : pct > 35 ? "bg-yellow-400" : "bg-[#b45309]";
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-xs text-[#6b7280]">{label}</span>
+        <span className="text-xs font-semibold text-[#1a1a2e]">{display}</span>
+      </div>
+      <div className="h-2 bg-[#f4f2ef] rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) {
+  const detected = frameAnalysis.filter((f) => f.faceDetected);
+  if (detected.length === 0) return null;
+  const avg = (key: keyof FrameAnalysisEntry) =>
+    detected.reduce((s, f) => s + ((f[key] as number) ?? 0), 0) / detected.length;
+
+  const eyeContact = avg("eyeContactScore");
+  const headPose   = avg("headPoseScore");
+  const mouthOpen  = avg("mouthOpenScore");
+  const smile      = avg("smileScore");
+  const blink      = avg("blinkScore");
+  const pitch      = avg("headPitch");
+  const roll       = avg("headRoll");
+
+  return (
+    <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm">
+      <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-4 flex items-center gap-1.5">
+        <span>📈</span> Session Analysis
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+        <ScoreBar label="👁 Eye Contact"   value={eyeContact} />
+        <ScoreBar label="🙂 Head Pose (Yaw)" value={headPose} />
+        <ScoreBar label="💬 Mouth Open (Speaking)" value={mouthOpen} />
+        <ScoreBar label="😄 Smile"         value={smile} />
+        <ScoreBar label="😑 Blink Rate"    value={blink} invert />
+        <ScoreBar label="↕ Head Pitch"    value={pitch} unit="°" />
+        <ScoreBar label="↔ Head Roll"     value={roll}  unit="°" />
+      </div>
+      <p className="mt-3 text-[10px] text-[#9ca3af]">
+        Based on {detected.length} detected frames out of {frameAnalysis.length} total.
+      </p>
     </div>
   );
 }

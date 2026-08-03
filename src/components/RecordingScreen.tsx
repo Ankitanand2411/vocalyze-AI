@@ -22,6 +22,18 @@ type RecordingState =
 // MediaPipe FaceLandmarker returns landmarks as {x, y, z} objects,
 // NOT number[] tuples — this was the source of the null-score bug.
 type Landmark = { x: number; y: number; z: number };
+type BlendshapeCategory = { categoryName: string; score: number };
+type MPResult = {
+  faceLandmarks?: Landmark[][];
+  faceBlendshapes?: { categories: BlendshapeCategory[] }[];
+};
+interface LiveScores {
+  eyeContact: number;
+  headPose: number;
+  mouthOpen: number;
+  smile: number;
+  blink: number;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,63 +43,122 @@ function formatDuration(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/**
- * Derives a 0–1 eye-contact score from FaceLandmarker's iris landmarks.
- *
- * Iris landmarks 468–471 = left iris, 472–475 = right iris.
- * When pupils are centered relative to eye corners, the user is looking at the
- * camera (score → 1). When they drift left/right the score drops toward 0.
- * Head pose (yaw) is derived from nose-tip vs cheek midpoint offset.
- */
-function scoreFrame(landmarks: Landmark[]): {
+function scoreFrame(
+  landmarks: Landmark[],
+  blendshapes?: BlendshapeCategory[]
+): {
   eyeContactScore: number;
   headPoseScore: number;
+  mouthOpenScore: number;
+  smileScore: number;
+  blinkScore: number;
+  headPitch: number;
+  headRoll: number;
 } {
-  if (!landmarks || landmarks.length === 0) {
-    return { eyeContactScore: 0, headPoseScore: 0 };
-  }
-
+  const zero = { eyeContactScore: 0, headPoseScore: 0, mouthOpenScore: 0, smileScore: 0, blinkScore: 0, headPitch: 0, headRoll: 0 };
+  if (!landmarks || landmarks.length === 0) return zero;
   const pts = landmarks;
 
-  // ── Head pose (yaw) ───────────────────────────────────────────────────────
-  const noseTip = pts[1];
-  const leftCheek = pts[234];
+  // ── Head pose yaw ────────────────────────────────────────────────────
+  const noseTip    = pts[1];
+  const leftCheek  = pts[234];
   const rightCheek = pts[454];
-
   let headPoseScore = 1;
   if (noseTip && leftCheek && rightCheek) {
     const faceCenterX = (leftCheek.x + rightCheek.x) / 2;
     headPoseScore = Math.max(0, 1 - Math.abs(noseTip.x - faceCenterX) / 0.12);
   }
 
-  // ── Eye contact (gaze) ────────────────────────────────────────────────────
+  // ── Eye contact / iris gaze ──────────────────────────────────────────
   let eyeContactScore = 0.5;
-
-  const leftIrisIndices = [468, 469, 470, 471];
-  const rightIrisIndices = [472, 473, 474, 475];
-
-  const hasIris =
-    pts.length > 475 &&
-    leftIrisIndices.every((i) => pts[i]) &&
-    rightIrisIndices.every((i) => pts[i]);
-
+  const leftIrisIdx  = [468, 469, 470, 471];
+  const rightIrisIdx = [472, 473, 474, 475];
+  const hasIris = pts.length > 475 && leftIrisIdx.every((i) => pts[i]) && rightIrisIdx.every((i) => pts[i]);
   if (hasIris) {
-    const leftIrisX =
-      leftIrisIndices.reduce((s, i) => s + pts[i].x, 0) / leftIrisIndices.length;
-    const leftEyeW = Math.abs((pts[33]?.x ?? 1) - (pts[133]?.x ?? 0)) || 1;
-    const leftGaze =
-      Math.abs(leftIrisX - ((pts[33]?.x ?? 0) + (pts[133]?.x ?? 1)) / 2) / leftEyeW;
-
-    const rightIrisX =
-      rightIrisIndices.reduce((s, i) => s + pts[i].x, 0) / rightIrisIndices.length;
-    const rightEyeW = Math.abs((pts[263]?.x ?? 1) - (pts[362]?.x ?? 0)) || 1;
-    const rightGaze =
-      Math.abs(rightIrisX - ((pts[263]?.x ?? 0) + (pts[362]?.x ?? 1)) / 2) / rightEyeW;
-
-    eyeContactScore = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.6);
+    const leftIrisX  = leftIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
+    const leftEyeW   = Math.abs((pts[33]?.x ?? 1) - (pts[133]?.x ?? 0)) || 1;
+    const leftGaze   = Math.abs(leftIrisX  - ((pts[33]?.x  ?? 0) + (pts[133]?.x ?? 1)) / 2) / leftEyeW;
+    const rightIrisX = rightIrisIdx.reduce((s, i) => s + pts[i].x, 0) / 4;
+    const rightEyeW  = Math.abs((pts[263]?.x ?? 1) - (pts[362]?.x ?? 0)) || 1;
+    const rightGaze  = Math.abs(rightIrisX - ((pts[263]?.x ?? 0) + (pts[362]?.x ?? 1)) / 2) / rightEyeW;
+    eyeContactScore  = Math.max(0, 1 - (leftGaze + rightGaze) / 2 / 0.6);
   }
 
-  return { eyeContactScore, headPoseScore };
+  // ── Pitch (up/down) from landmark geometry ───────────────────────────
+  let headPitch = 0;
+  const foreheadTop = pts[10];
+  const chin        = pts[152];
+  if (noseTip && foreheadTop && chin) {
+    const faceH = chin.y - foreheadTop.y;
+    if (faceH > 0) headPitch = ((noseTip.y - foreheadTop.y) / faceH - 0.45) * 60;
+  }
+
+  // ── Roll (head tilt) from eye-to-eye angle ───────────────────────────
+  let headRoll = 0;
+  const lEyeInner = pts[133];
+  const rEyeInner = pts[362];
+  if (lEyeInner && rEyeInner)
+    headRoll = Math.atan2(rEyeInner.y - lEyeInner.y, rEyeInner.x - lEyeInner.x) * (180 / Math.PI);
+
+  // ── Blendshapes ──────────────────────────────────────────────────────
+  let mouthOpenScore = 0, smileScore = 0, blinkScore = 0;
+  if (blendshapes && blendshapes.length > 0) {
+    const find = (name: string) => blendshapes.find((c) => c.categoryName === name)?.score ?? 0;
+    mouthOpenScore = find("mouthOpen");
+    smileScore     = Math.min(1, find("mouthSmileLeft") + find("mouthSmileRight"));
+    blinkScore     = (find("eyeBlinkLeft") + find("eyeBlinkRight")) / 2;
+  }
+
+  return { eyeContactScore, headPoseScore, mouthOpenScore, smileScore, blinkScore, headPitch, headRoll };
+}
+
+// ─── Canvas face-mesh drawing ─────────────────────────────────────────────────
+
+const EYE_L  = [33, 160, 158, 133, 153, 144];
+const EYE_R  = [263, 387, 385, 362, 380, 373];
+const MOUTH  = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+const IRIS_L = [468, 469, 470, 471];
+const IRIS_R = [472, 473, 474, 475];
+
+function drawPolyline(
+  ctx: CanvasRenderingContext2D, pts: Landmark[], indices: number[],
+  cw: number, ch: number, color: string, close = false
+) {
+  const points = indices.map((i) => pts[i]).filter(Boolean);
+  if (points.length < 2) return;
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.moveTo(points[0].x * cw, points[0].y * ch);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x * cw, points[i].y * ch);
+  if (close) ctx.closePath();
+  ctx.stroke();
+}
+
+function drawFaceMesh(canvas: HTMLCanvasElement, video: HTMLVideoElement, landmarks: Landmark[]) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const w = video.videoWidth || video.clientWidth;
+  const h = video.videoHeight || video.clientHeight;
+  if (canvas.width !== w)  canvas.width  = w;
+  if (canvas.height !== h) canvas.height = h;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (landmarks.length === 0) return;
+  const cw = canvas.width, ch = canvas.height;
+  // Mesh dots
+  ctx.fillStyle = "rgba(108,142,191,0.25)";
+  for (const pt of landmarks) {
+    ctx.beginPath(); ctx.arc(pt.x * cw, pt.y * ch, 1, 0, Math.PI * 2); ctx.fill();
+  }
+  // Feature contours
+  drawPolyline(ctx, landmarks, [...EYE_L, EYE_L[0]],   cw, ch, "rgba(108,180,255,0.7)", true);
+  drawPolyline(ctx, landmarks, [...EYE_R, EYE_R[0]],   cw, ch, "rgba(108,180,255,0.7)", true);
+  drawPolyline(ctx, landmarks, [...MOUTH, MOUTH[0]],   cw, ch, "rgba(220,150,150,0.6)", true);
+  // Iris dots
+  ctx.fillStyle = "rgba(100,210,255,0.9)";
+  for (const idx of [...IRIS_L, ...IRIS_R]) {
+    const pt = landmarks[idx];
+    if (!pt) continue;
+    ctx.beginPath(); ctx.arc(pt.x * cw, pt.y * ch, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -99,6 +170,8 @@ export default function RecordingScreen({
 }: RecordingScreenProps) {
   const [state, setState] = useState<RecordingState>("requesting");
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [liveScores, setLiveScores] = useState<LiveScores | null>(null);
+  const liveScoreTickRef = useRef(0);
   const [errorMsg, setErrorMsg] = useState("");
 
   // ── Shared infrastructure ─────────────────────────────────────────────────
@@ -173,7 +246,7 @@ export default function RecordingScreen({
           },
           runningMode: "VIDEO",
           numFaces: 1,
-          outputFaceBlendshapes: false,
+          outputFaceBlendshapes: true,  // ← enabled: gives smile/mouth/blink scores
         });
 
       try {
@@ -208,10 +281,7 @@ export default function RecordingScreen({
       const now = performance.now();
       const video = videoRef.current;
       const landmarker = moduleB.faceLandmarkerRef.current as {
-        detectForVideo: (
-          v: HTMLVideoElement,
-          t: number
-        ) => { faceLandmarks?: Landmark[][] };
+        detectForVideo: (v: HTMLVideoElement, t: number) => MPResult;
       } | null;
 
       // ── Diagnostic: log state every ~1 second ──────────────────────────────
@@ -236,26 +306,48 @@ export default function RecordingScreen({
       ) {
         lastDetectTime = now;
         try {
-          const result = landmarker.detectForVideo(video, now);
-          const landmarks = result.faceLandmarks?.[0] ?? [];
+          const result    = landmarker.detectForVideo(video, now);
+          const landmarks = result.faceLandmarks?.[0]  ?? [];
+          const blendshapes = result.faceBlendshapes?.[0]?.categories ?? [];
 
           if (!firstFrameLogged) {
             firstFrameLogged = true;
             console.log("[MP Loop] ✅ First frame detected:", {
               landmarkCount: landmarks.length,
+              blendshapeCount: blendshapes.length,
               faceDetected: landmarks.length > 0,
-              sampleLandmark: landmarks[0],
             });
           }
 
-          const { eyeContactScore, headPoseScore } = scoreFrame(landmarks);
+          // Draw face mesh on canvas overlay
+          const canvas = canvasRef.current;
+          if (canvas) drawFaceMesh(canvas, video, landmarks);
+
+          const scores = scoreFrame(landmarks, blendshapes);
 
           moduleB.frameDataRef.current.push({
             timestamp: Date.now() - startTimeRef.current,
-            eyeContactScore,
-            headPoseScore,
-            faceDetected: landmarks.length > 0,
+            eyeContactScore:  scores.eyeContactScore,
+            headPoseScore:    scores.headPoseScore,
+            faceDetected:     landmarks.length > 0,
+            mouthOpenScore:   scores.mouthOpenScore,
+            smileScore:       scores.smileScore,
+            blinkScore:       scores.blinkScore,
+            headPitch:        scores.headPitch,
+            headRoll:         scores.headRoll,
           });
+
+          // Update live UI scores every ~500 ms
+          liveScoreTickRef.current++;
+          if (liveScoreTickRef.current % 12 === 0) {
+            setLiveScores({
+              eyeContact: scores.eyeContactScore,
+              headPose:   scores.headPoseScore,
+              mouthOpen:  scores.mouthOpenScore,
+              smile:      scores.smileScore,
+              blink:      scores.blinkScore,
+            });
+          }
         } catch (err) {
           if (moduleB.frameDataRef.current.length === 0) {
             console.error("[MP Loop] ❌ detectForVideo threw:", err);
@@ -507,14 +599,31 @@ export default function RecordingScreen({
             </div>
           )}
 
-          {/* Recording timer badge */}
+          {/* Recording timer + live scores */}
           {state === "recording" && (
-            <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
-              <span className="text-white text-xs font-medium tabular-nums">
-                {formatDuration(elapsedMs)}
-              </span>
-            </div>
+            <>
+              <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#b45309] pulse-dot" aria-hidden="true" />
+                <span className="text-white text-xs font-medium tabular-nums">
+                  {formatDuration(elapsedMs)}
+                </span>
+              </div>
+              {liveScores && (
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2 px-3">
+                  {[
+                    { label: "👁 Eye",  val: liveScores.eyeContact },
+                    { label: "🙂 Head", val: liveScores.headPose },
+                    { label: "💬 Mouth",val: liveScores.mouthOpen },
+                    { label: "😄 Smile",val: liveScores.smile },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2.5 py-1">
+                      <span className="text-[10px] text-white/70">{label}</span>
+                      <span className="text-[10px] font-semibold text-white">{Math.round(val * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Stopping overlay */}
@@ -525,8 +634,12 @@ export default function RecordingScreen({
           )}
         </div>
 
-        {/* Hidden canvas — available for future landmark overlay rendering */}
-        <canvas ref={canvasRef} className="hidden" />
+        {/* Canvas face-mesh overlay — sits on top of video */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          aria-hidden="true"
+        />
 
         {/* Controls */}
         <div className="flex flex-col items-center gap-3">
