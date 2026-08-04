@@ -929,7 +929,7 @@ function BackendReport({
           <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">📝 Language & Vocabulary</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
-              <StatRow label="Weak Words Found" value={report.linguistic_stats.weak_words_count} />
+              <StatRow label="Weak Words Found" value={report.linguistic_stats.weak_words_count.toString()} />
               {report.linguistic_stats.weak_words_count > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {report.linguistic_stats.weak_words_found.map((w, i) => (
@@ -939,7 +939,7 @@ function BackendReport({
               )}
               
               <div className="mt-4">
-                <StatRow label="Non-Inclusive Terms" value={report.linguistic_stats.non_inclusive_terms.length} />
+                <StatRow label="Non-Inclusive Terms" value={report.linguistic_stats.non_inclusive_terms.length.toString()} />
                 {report.linguistic_stats.non_inclusive_terms.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {report.linguistic_stats.non_inclusive_terms.map((w, i) => (
@@ -951,7 +951,7 @@ function BackendReport({
             </div>
             
             <div>
-              <StatRow label="Run-on Sentences (>40 words)" value={report.linguistic_stats.run_on_sentences} />
+              <StatRow label="Run-on Sentences (>40 words)" value={report.linguistic_stats.run_on_sentences.toString()} />
               <div className="mt-4">
                 <StatRow label="Top Repeated Words" value={report.linguistic_stats.top_repeated_words.length > 0 ? "" : "None"} />
                 {report.linguistic_stats.top_repeated_words.length > 0 && (
