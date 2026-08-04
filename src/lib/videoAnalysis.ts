@@ -68,7 +68,7 @@ export interface FrameAnalysisEntry {
 }
 
 // ── Gaze zone classifier — with head-yaw compensation ────────────────────
-function classifyGazeZone(pts: Landmark[]): "center" | "left" | "right" | "down" | "away" {
+function classifyGazeZone(pts: Landmark[]): "center" | "left" | "right" | "down" | "up" | "away" {
   const leftIrisIdx  = [468, 469, 470, 471];
   const rightIrisIdx = [472, 473, 474, 475];
   if (pts.length <= 475) return "away";
