@@ -398,6 +398,7 @@ export async function analyzeVideo(
             stressScore:     scores.stressScore,
             frownScore:      scores.frownScore,
             squintScore:     scores.squintScore,
+            mockingScore:    scores.mockingScore,
             gazeZone:        scores.gazeZone,
             faceWidth:       scores.faceWidth,
             isReadingScript,
