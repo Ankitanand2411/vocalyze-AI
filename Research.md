@@ -211,3 +211,21 @@ Recording audio-only in parallel at record time is simpler and more reliable tha
 Multiple booleans (`isRecording`, `isLoading`, `hasError`) allow impossible states — e.g., `isRecording = true` AND `hasError = true` simultaneously, which has no valid UI.
 
 A TypeScript discriminated union (`"requesting" | "recording" | "stopping" | "error_permission" | "error_support"`) makes each state mutually exclusive at compile time.
+
+---
+
+## 11. Known Limitation — Blendshape Emotion Detection False Positives
+
+MediaPipe's face blendshapes follow the ARKit 52-blendshape standard, which has **no dedicated category for tongue-out or mocking expressions.** When a user makes this gesture, the model has no matching class to project it onto — it maps the mouth shape to the *closest* categories it does know, typically `mouthSmileLeft`/`mouthSmileRight`, producing a false-positive smile/positive-emotion score.
+
+**This is a limitation of the underlying model's trained taxonomy, not a bug in the scoring formula** — no amount of threshold-tuning on our side fully eliminates it, since the signal genuinely isn't distinguishable within ARKit's 52 categories alone.
+
+**Partial mitigation (not yet implemented):** cross-check the mouth-based smile signal against eye/cheek engagement (`eyeSquintLeft/Right`), since a genuine smile (the "Duchenne marker" in facial-expression research) reliably engages both regions together, while a mock expression like tongue-out typically activates the mouth alone:
+```
+mouthComponent = min(1, mouthSmileLeft + mouthSmileRight)
+eyeComponent   = (eyeSquintLeft + eyeSquintRight) / 2
+smileScore     = mouthComponent × (0.5 + 0.5 × eyeComponent)
+```
+This reduces, but does not fully eliminate, false positives — a sufficiently deliberate mock expression can still activate both signals.
+
+**Documented here rather than silently patched** because it's a defensible, stated limitation for a thesis: emotion detection from a fixed blendshape taxonomy has known false-positive modes for expressions outside that taxonomy's training distribution.

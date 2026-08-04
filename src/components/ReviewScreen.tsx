@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { RecordingResult } from "@/app/page";
 import { analyzeVideo, type FrameAnalysisEntry } from "@/lib/videoAnalysis";
+import { postAnalyze, type AnalysisResponse } from "@/lib/api";
 
 interface ReviewScreenProps {
   result: RecordingResult;
@@ -196,7 +197,7 @@ function DebugInspector({
       detail: `${(faceRate * 100).toFixed(1)}% face detection rate`,
     });
 
-    const validZones = new Set(["center", "left", "right", "down", "away"]);
+    const validZones = new Set(["center", "left", "right", "down", "up", "away"]);
     const badZone = fa.some((f) => !validZones.has(f.gazeZone));
     checks.push({
       label: "gazeZone field always valid",
@@ -356,13 +357,13 @@ function DebugInspector({
               </div>
 
               {videoUrl && (
-                <div className="relative rounded-xl overflow-hidden bg-[#1a1a2e] aspect-video">
+                <div className="relative rounded-xl overflow-hidden bg-[#1a1a2e] aspect-[4/3] max-h-[600px]">
                   <video
                     ref={dbgVideoRef}
                     src={videoUrl}
                     controls
                     playsInline
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     aria-label="Module B video — shared clock proof"
                     onPlay={handleVideoPlay}
                     onPause={handleVideoPause}
@@ -381,22 +382,61 @@ function DebugInspector({
                     <span className="text-white/50 text-[10px]">shared clock</span>
                   </div>
 
+                  <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-lg p-1 pointer-events-auto z-10">
+                    {[0.1, 0.25, 0.5, 1].map(rate => (
+                      <button 
+                        key={rate} 
+                        onClick={() => { 
+                          if (dbgVideoRef.current) {
+                            dbgVideoRef.current.playbackRate = rate;
+                            // Force re-render to highlight active rate if we were storing it in state, 
+                            // but since we want to keep it simple without adding a new useState, 
+                            // we'll just let the user click it.
+                          }
+                        }}
+                        className="text-[10px] font-mono font-bold text-white px-2 py-1 rounded hover:bg-white/20 transition-colors"
+                        title={`Set playback speed to ${rate}x`}
+                      >
+                        {rate}x
+                      </button>
+                    ))}
+                  </div>
+
                   {activeFrame && (
                     <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1 pointer-events-none">
                       <div className="bg-black/60 backdrop-blur-sm rounded-xl px-3 py-2 text-right">
                         <p className="text-[9px] text-white/50 uppercase tracking-widest mb-1">
                           Closest frame @ {activeFrame.timestamp} ms
                         </p>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2 justify-end max-w-[200px]">
                           {[
-                            { k: "👁", v: activeFrame.eyeContactScore },
-                            { k: "🙂", v: activeFrame.headPoseScore },
-                            { k: "😄", v: activeFrame.smileScore ?? 0 },
-                          ].map(({ k, v }) => (
-                            <span key={k} className="text-[10px] font-semibold text-white">
-                              {k} {Math.round((v ?? 0) * 100)}%
-                            </span>
-                          ))}
+                            { k: "👁 Eye", v: activeFrame.eyeContactScore },
+                            { k: "🙂 Head", v: activeFrame.headPoseScore },
+                            { k: "😄 Smile", v: activeFrame.smileScore ?? 0 },
+                            { k: "😑 Blink", v: activeFrame.blinkScore ?? 0 },
+                            { k: "😟 Anx", v: activeFrame.anxietyScore ?? 0 },
+                            { k: "😬 Str", v: activeFrame.stressScore ?? 0 },
+                            { k: "😮 Jaw", v: activeFrame.mouthOpenScore ?? 0 },
+                            { k: "☹️ Frown", v: activeFrame.frownScore ?? 0 },
+                            { k: "🤡 Mock", v: activeFrame.mockingScore ?? 0 },
+                          ].map(({ k, v }) => {
+                            const val = v ?? 0;
+                            // Highlight if it crosses the new backend thresholds
+                            const isHigh = 
+                              (k.includes("Eye") && val < 0.4) ||
+                              (k.includes("Smile") && val > 0.45) ||
+                              (k.includes("Blink") && val > 0.35) ||
+                              (k.includes("Anx") && val > 0.35) ||
+                              (k.includes("Str") && val > 0.35) ||
+                              (k.includes("Jaw") && val > 0.3) ||
+                              (k.includes("Frown") && val > 0.3) ||
+                              (k.includes("Mock") && val > 0.4);
+                            return (
+                              <span key={k} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isHigh ? "bg-red-500/80 text-white" : "bg-white/20 text-white"}`}>
+                                {k} {Math.round(val * 100)}%
+                              </span>
+                            );
+                          })}
                         </div>
                         <p className="text-[9px] mt-1 font-medium" style={{ color: activeFrame.faceDetected ? "#4ade80" : "#f87171" }}>
                           {activeFrame.faceDetected ? "✓ face detected" : "✗ no face"}
@@ -513,15 +553,24 @@ function DebugInspector({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// ── Backend report status ─────────────────────────────────────────────────────
+type BackendStatus = "idle" | "sending" | "done" | "error";
+
 export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
 
+  // MediaPipe (local) analysis state
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisError, setAnalysisError] = useState("");
   const [frameAnalysis, setFrameAnalysis] = useState<FrameAnalysisEntry[]>([]);
   const [mediapipeReady, setMediapipeReady] = useState(false);
+
+  // Backend report state
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("idle");
+  const [backendReport, setBackendReport] = useState<AnalysisResponse | null>(null);
+  const [backendError, setBackendError] = useState("");
 
   useEffect(() => {
     const url = URL.createObjectURL(result.videoBlob);
@@ -529,25 +578,58 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
     return () => URL.revokeObjectURL(url);
   }, [result.videoBlob]);
 
+  /**
+   * Step 1 — run MediaPipe locally against the video blob.
+   * Step 2 — once MediaPipe succeeds, immediately POST the audio + frame data
+   *           to the FastAPI backend for the coaching report.
+   */
   const handleAnalyze = useCallback(async () => {
     setAnalysisStatus("running");
     setAnalysisProgress(0);
     setAnalysisError("");
+    setBackendStatus("idle");
+    setBackendReport(null);
+    setBackendError("");
+
+    let fa: FrameAnalysisEntry[] = [];
+    let ready = false;
+
+    // ── Step 1: MediaPipe (local) ────────────────────────────────────────────
     try {
-      const { frameAnalysis: fa, mediapipeReady: ready } = await analyzeVideo(
-        result.videoBlob,
-        setAnalysisProgress
-      );
+      const result_ = await analyzeVideo(result.videoBlob, setAnalysisProgress);
+      fa = result_.frameAnalysis;
+      ready = result_.mediapipeReady;
       setFrameAnalysis(fa);
       setMediapipeReady(ready);
       setAnalysisStatus(ready ? "done" : "error");
-      if (!ready) setAnalysisError("MediaPipe failed to load — check your connection and try again.");
+      if (!ready) {
+        setAnalysisError("MediaPipe failed to load — check your connection and try again.");
+        return;
+      }
     } catch (err) {
-      console.error("[ReviewScreen] analysis failed:", err);
+      console.error("[ReviewScreen] MediaPipe analysis failed:", err);
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed.");
       setAnalysisStatus("error");
+      return;
     }
-  }, [result.videoBlob]);
+
+    // ── Step 2: Backend report ───────────────────────────────────────────────
+    setBackendStatus("sending");
+    try {
+      const report = await postAnalyze({
+        audioBlob: result.audioBlob,
+        frameData: { mediapipeReady: ready, frameAnalysis: fa },
+      });
+      setBackendReport(report);
+      setBackendStatus("done");
+    } catch (err) {
+      console.error("[ReviewScreen] backend call failed:", err);
+      setBackendError(
+        err instanceof Error ? err.message : "Could not reach the backend."
+      );
+      setBackendStatus("error");
+    }
+  }, [result.videoBlob, result.audioBlob]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in">
@@ -566,14 +648,14 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
           <p className="text-xs font-medium text-[#6c8ebf] tracking-widest uppercase">Review</p>
         </div>
 
-        <div className="rounded-2xl overflow-hidden bg-[#1a1a2e] aspect-video shadow-md mb-6">
+        <div className="rounded-2xl overflow-hidden bg-[#1a1a2e] aspect-[4/3] max-h-[600px] shadow-md mb-6">
           {videoUrl && (
             <video
               ref={videoRef}
               src={videoUrl}
               controls
               playsInline
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               aria-label="Recorded session playback"
             />
           )}
@@ -631,9 +713,9 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
           </div>
         )}
 
-        {analysisStatus === "done" && (
+        {analysisStatus === "done" && backendStatus !== "done" && (
           <p className="mt-4 text-xs text-[#9ca3af]">
-            Movement analysis complete. Speech transcript and AI feedback are still on the backend to-do list.
+            Movement analysis complete.{backendStatus === "sending" ? " Sending to backend…" : ""}
           </p>
         )}
 
@@ -644,6 +726,22 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
         {mediapipeReady && frameAnalysis.length > 0 && (
           <ScorePanel frameAnalysis={frameAnalysis} />
         )}
+
+        {/* ── Backend coaching report ── */}
+        <BackendReport
+          status={backendStatus}
+          report={backendReport}
+          error={backendError}
+          onSeek={(timeMs) => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = timeMs / 1000;
+              videoRef.current.play().catch(e => console.error("Play failed:", e));
+              
+              // Scroll to the video player so the user can see it
+              videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }}
+        />
 
         <DebugInspector
           audioBlob={result.audioBlob}
@@ -661,6 +759,235 @@ function InfoTile({ label, value }: { label: string; value: string }) {
     <div className="bg-white rounded-xl border border-[#e5e7eb] px-4 py-3.5 text-center">
       <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1">{label}</p>
       <p className="text-sm font-semibold text-[#1a1a2e]">{value}</p>
+    </div>
+  );
+}
+
+// ─── Backend Coaching Report ──────────────────────────────────────────────────
+
+function ScoreCircle({ score }: { score: number }) {
+  const color =
+    score >= 75 ? "text-green-600 border-green-400"
+    : score >= 50 ? "text-yellow-600 border-yellow-400"
+    : "text-[#b45309] border-[#b45309]";
+  return (
+    <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${color}`}>
+      <span className="text-2xl font-bold tabular-nums">{Math.round(score)}</span>
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center py-1.5 border-b border-[#f4f2ef] last:border-0">
+      <span className="text-xs text-[#6b7280]">{label}</span>
+      <span className="text-xs font-semibold text-[#1a1a2e]">{value}</span>
+    </div>
+  );
+}
+
+function BackendReport({
+  status,
+  report,
+  error,
+  onSeek,
+}: {
+  status: BackendStatus;
+  report: AnalysisResponse | null;
+  error: string;
+  onSeek?: (timeMs: number) => void;
+}) {
+  if (status === "idle") return null;
+
+  if (status === "sending") {
+    return (
+      <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm flex items-center gap-3">
+        <div className="w-5 h-5 rounded-full border-2 border-[#6c8ebf] border-t-transparent animate-spin flex-shrink-0" />
+        <p className="text-sm text-[#6b7280]">Sending to backend for coaching report…</p>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="mt-6 bg-white rounded-2xl border border-red-200 p-5 shadow-sm">
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">⚠️ Backend Error</p>
+        <p className="text-sm text-[#b45309]">{error}</p>
+        <p className="mt-2 text-xs text-[#9ca3af]">
+          Make sure the FastAPI server is running on{" "}
+          <code className="bg-[#f4f2ef] px-1 rounded">http://localhost:8000</code>.
+        </p>
+      </div>
+    );
+  }
+
+  if (!report) return null;
+
+  const { overall_score, feedback, gaze, emotion, head_pose, audio_received_bytes, frame_count, face_detected_pct } = report;
+
+  return (
+    <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm space-y-6">
+
+      {/* ── Header + score ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-0.5">
+            🤖 Backend Coaching Report
+          </p>
+          <p className="text-xs text-[#6b7280]">
+            {frame_count} frames · {face_detected_pct.toFixed(0)}% face detected
+            · {(audio_received_bytes / 1024).toFixed(1)} KB audio
+          </p>
+        </div>
+        <ScoreCircle score={overall_score} />
+      </div>
+
+      {/* ── Feedback tips ── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">💡 Coaching Tips</p>
+        <ul className="space-y-2">
+          {feedback.map((tip, i) => (
+            <li key={i} className="text-sm text-[#374151] leading-relaxed bg-[#f4f2ef] rounded-xl px-4 py-2.5">
+              {tip}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* ── Gaze breakdown ── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">👀 Gaze Distribution</p>
+        <div className="grid grid-cols-5 gap-1.5 text-center">
+          {([
+            { label: "Center", pct: gaze.center_pct, good: true },
+            { label: "Left",   pct: gaze.left_pct,   good: false },
+            { label: "Right",  pct: gaze.right_pct,  good: false },
+            { label: "Down",   pct: gaze.down_pct,   good: false },
+            { label: "Away",   pct: gaze.away_pct,   good: false },
+          ] as const).map(({ label, pct, good }) => (
+            <div key={label} className="bg-[#f4f2ef] rounded-xl p-2">
+              <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest">{label}</p>
+              <p className={`text-sm font-semibold mt-0.5 ${
+                good && pct > 50 ? "text-green-600"
+                : !good && pct > 30 ? "text-amber-600"
+                : "text-[#1a1a2e]"
+              }`}>
+                {pct.toFixed(0)}%
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Head pose + emotion stats ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div>
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">👤 Head &amp; Gaze</p>
+          <StatRow label="Eye Contact"          value={`${(head_pose.avg_eye_contact * 100).toFixed(0)}%`} />
+          <StatRow label="Head Pose (Yaw)"      value={`${(head_pose.avg_head_pose * 100).toFixed(0)}%`} />
+          <StatRow label="Head Pitch"           value={`${head_pose.avg_head_pitch.toFixed(1)}°`} />
+          <StatRow label="Head Roll"            value={`${head_pose.avg_head_roll.toFixed(1)}°`} />
+          <StatRow label="Script Reading"       value={head_pose.script_reading_detected ? "Detected" : "Not detected"} />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">🧠 Emotion Signals</p>
+          <StatRow label="Anxiety"   value={`${(emotion.avg_anxiety * 100).toFixed(0)}%`} />
+          <StatRow label="Confusion" value={`${(emotion.avg_confusion * 100).toFixed(0)}%`} />
+          <StatRow label="Stress"    value={`${(emotion.avg_stress * 100).toFixed(0)}%`} />
+          <StatRow label="Frown"     value={`${(emotion.avg_frown * 100).toFixed(0)}%`} />
+          <StatRow label="Smile"     value={`${(emotion.avg_smile * 100).toFixed(0)}%`} />
+        </div>
+      </div>
+
+      {/* ── Detected Events ── */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">
+          ⚡ Detected Events
+          <span className="ml-2 font-normal normal-case tracking-normal text-[10px]">
+            ({report.detected_events.length} total — used for Whisper stitching)
+          </span>
+        </p>
+        {report.detected_events.length === 0 ? (
+          <p className="text-xs text-[#9ca3af] bg-[#f4f2ef] rounded-xl px-4 py-2.5">
+            No notable events detected — thresholds may need loosening. Check Score Ranges below.
+          </p>
+        ) : (
+          <div className="overflow-auto rounded-xl border border-[#e5e7eb]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#f4f2ef] text-[#9ca3af] uppercase tracking-widest text-[9px]">
+                  <th className="px-3 py-2 text-left font-semibold">Type</th>
+                  <th className="px-3 py-2 text-right font-semibold">Start</th>
+                  <th className="px-3 py-2 text-right font-semibold">End</th>
+                  <th className="px-3 py-2 text-right font-semibold">Duration</th>
+                  <th className="px-3 py-2 text-right font-semibold">Peak</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.detected_events.map((ev, i) => {
+                  const typeColor: Record<string, string> = {
+                    eye_contact_break: "text-amber-600 bg-amber-50",
+                    gaze_away:         "text-orange-600 bg-orange-50",
+                    high_anxiety:      "text-red-600 bg-red-50",
+                    high_stress:       "text-red-600 bg-red-50",
+                    script_reading:    "text-purple-600 bg-purple-50",
+                    smile:             "text-green-600 bg-green-50",
+                    eye_closure:       "text-blue-600 bg-blue-50",
+                  };
+                  const cls = typeColor[ev.type] ?? "text-[#6b7280] bg-[#f4f2ef]";
+                  return (
+                    <tr 
+                      key={i} 
+                      className="border-t border-[#f4f2ef] cursor-pointer hover:bg-[#f4f2ef]/50 transition-colors group"
+                      onClick={() => onSeek?.(ev.start_ms)}
+                      title="Click to jump to this moment in the video"
+                    >
+                      <td className="px-3 py-2">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${cls}`}>
+                          {ev.type.replace(/_/g, " ")}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#6b7280] group-hover:text-[#1a1a2e]">{(ev.start_ms / 1000).toFixed(2)}s</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#6b7280] group-hover:text-[#1a1a2e]">{(ev.end_ms / 1000).toFixed(2)}s</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#1a1a2e] font-medium">{ev.duration_ms.toFixed(0)}ms</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#6b7280]">
+                        {ev.peak_value !== null ? ev.peak_value.toFixed(3) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Score Ranges (threshold tuning aid) ── */}
+      <details className="group">
+        <summary className="cursor-pointer text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest select-none list-none flex items-center gap-1.5">
+          <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+          📊 Raw Score Ranges (threshold tuning)
+        </summary>
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+          {([
+            { label: "Eye Contact", min: report.score_ranges.eye_contact_min, max: report.score_ranges.eye_contact_max, avg: report.score_ranges.eye_contact_avg },
+            { label: "Anxiety",     min: report.score_ranges.anxiety_min,     max: report.score_ranges.anxiety_max,     avg: report.score_ranges.anxiety_avg },
+            { label: "Stress",      min: report.score_ranges.stress_min,      max: report.score_ranges.stress_max,      avg: report.score_ranges.stress_avg },
+            { label: "Smile",       min: report.score_ranges.smile_min,       max: report.score_ranges.smile_max,       avg: report.score_ranges.smile_avg },
+          ]).map(({ label, min, max, avg }) => (
+            <div key={label} className="bg-[#f4f2ef] rounded-xl px-3 py-2.5">
+              <p className="text-[9px] text-[#9ca3af] uppercase tracking-widest mb-1">{label}</p>
+              <p className="text-[10px] text-[#6b7280]">min <span className="font-semibold text-[#1a1a2e]">{min.toFixed(3)}</span></p>
+              <p className="text-[10px] text-[#6b7280]">max <span className="font-semibold text-[#1a1a2e]">{max.toFixed(3)}</span></p>
+              <p className="text-[10px] text-[#6b7280]">avg <span className="font-semibold text-[#6c8ebf]">{avg.toFixed(3)}</span></p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] text-[#9ca3af]">
+          Use these ranges to tune thresholds in <code className="bg-[#f4f2ef] px-1 rounded">event_detection.py</code> — if no events fire, thresholds are likely above the actual max scores here.
+        </p>
+      </details>
+
     </div>
   );
 }

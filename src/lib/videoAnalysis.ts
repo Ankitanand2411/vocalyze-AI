@@ -50,9 +50,10 @@ export interface FrameAnalysisEntry {
   stressScore: number;
   frownScore: number;
   squintScore: number;
+  mockingScore: number;
 
   // ── Gaze zone classification ─────────────────────────────────────────────
-  gazeZone: "center" | "left" | "right" | "down" | "away";
+  gazeZone: "center" | "left" | "right" | "down" | "up" | "away";
 
   // ── Advanced metrics ──────────────────────────────────────────────────────
   faceWidth: number;
@@ -103,6 +104,7 @@ function classifyGazeZone(pts: Landmark[]): "center" | "left" | "right" | "down"
   const avgOffsetY   = (leftOffsetY + rightOffsetY) / 2;
 
   if (avgOffsetY        >  0.45) return "down";
+  if (avgOffsetY        < -0.35) return "up";
   if (compensatedOffsetX < -0.35) return "left";
   if (compensatedOffsetX >  0.35) return "right";
   return "center";
@@ -172,6 +174,33 @@ function scoreFrame(
   const stressScore    = (get("mouthPressLeft") + get("mouthPressRight")) / 2;
   const frownScore     = (get("mouthFrownLeft") + get("mouthFrownRight")) / 2;
   const squintScore    = (get("eyeSquintLeft") + get("eyeSquintRight")) / 2;
+  
+  // Mocking/Unprofessional: Asymmetry (goofy faces, winking, smirks), Sneers (disgust), Pucker (kissy face)
+  const asymmetryScore = Math.max(
+    Math.abs(get("mouthSmileLeft") - get("mouthSmileRight")),
+    Math.abs(get("mouthFrownLeft") - get("mouthFrownRight")),
+    Math.abs(get("mouthStretchLeft") - get("mouthStretchRight")),
+    Math.abs(get("mouthDimpleLeft") - get("mouthDimpleRight")),
+    Math.abs(get("mouthLowerDownLeft") - get("mouthLowerDownRight")),
+    Math.abs(get("eyeSquintLeft") - get("eyeSquintRight")),
+    Math.abs(get("eyeBlinkLeft") - get("eyeBlinkRight"))
+  );
+  
+  // Lip-to-Jaw Ratio (AU19 detection): Lips parted but jaw closed
+  let tongueProtrusion = 0;
+  if (pts[13] && pts[14] && pts[10] && pts[152]) {
+    const lipGap = Math.abs(pts[13].y - pts[14].y);
+    const faceHeight = Math.abs(pts[10].y - pts[152].y) || 1;
+    const normalizedGap = lipGap / faceHeight;
+    // If lips are parted > 5% of face height, but jaw is nearly shut
+    if (normalizedGap > 0.05 && get("jawOpen") < 0.1) {
+      tongueProtrusion = 1.0;
+    }
+  }
+
+  const sneerScore = (get("noseSneerLeft") + get("noseSneerRight")) / 2;
+  const puckerScore = get("mouthPucker");
+  const mockingScore = Math.max(asymmetryScore, sneerScore, puckerScore, tongueProtrusion);
 
   const gazeZone = classifyGazeZone(pts);
 
@@ -180,7 +209,7 @@ function scoreFrame(
   return {
     eyeContactScore, headPoseScore, mouthOpenScore, smileScore, blinkScore,
     headPitch, headRoll,
-    anxietyScore, confusionScore, stressScore, frownScore, squintScore,
+    anxietyScore, confusionScore, stressScore, frownScore, squintScore, mockingScore,
     gazeZone, faceWidth,
   };
 }
