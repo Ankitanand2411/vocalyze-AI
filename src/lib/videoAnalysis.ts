@@ -119,7 +119,7 @@ function scoreFrame(
   const zero = {
     eyeContactScore: 0, headPoseScore: 0, mouthOpenScore: 0, smileScore: 0,
     blinkScore: 0, headPitch: 0, headRoll: 0,
-    anxietyScore: 0, confusionScore: 0, stressScore: 0, frownScore: 0, squintScore: 0,
+    anxietyScore: 0, confusionScore: 0, stressScore: 0, frownScore: 0, squintScore: 0, mockingScore: 0,
     gazeZone: "away" as const,
     faceWidth: 0,
   };
