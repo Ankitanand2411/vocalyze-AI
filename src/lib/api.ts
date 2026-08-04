@@ -30,7 +30,25 @@ export interface HeadPoseSummary {
   avg_head_pose: number;
   avg_head_pitch: number;
   avg_head_roll: number;
-  script_reading_detected: boolean;
+}
+
+export interface AcousticStats {
+  pitch_variation: number;
+  avg_volume: number;
+  pause_count: number;
+  longest_pause_ms: number;
+  total_pause_time_ms: number;
+  wpm: number;
+  articulation_rate: number;
+  filler_word_ratio: number;
+}
+
+export interface LinguisticStats {
+  weak_words_count: number;
+  weak_words_found: string[];
+  non_inclusive_terms: string[];
+  run_on_sentences: number;
+  top_repeated_words: string[];
 }
 
 export interface AnalysisResponse {
@@ -40,10 +58,13 @@ export interface AnalysisResponse {
   gaze: GazeBreakdown;
   emotion: EmotionSummary;
   head_pose: HeadPoseSummary;
+  acoustic_stats?: AcousticStats;
+  linguistic_stats?: LinguisticStats;
   overall_score: number;
   feedback: string[];
   detected_events: DetectedEvent[];
   score_ranges: ScoreRanges;
+  transcript: string;
 }
 
 export interface DetectedEvent {

@@ -823,7 +823,7 @@ function BackendReport({
 
   if (!report) return null;
 
-  const { overall_score, feedback, gaze, emotion, head_pose, audio_received_bytes, frame_count, face_detected_pct } = report;
+  const { overall_score, feedback, gaze, emotion, head_pose, acoustic_stats, audio_received_bytes, frame_count, face_detected_pct } = report;
 
   return (
     <div className="mt-6 bg-white rounded-2xl border border-[#e5e7eb] p-5 shadow-sm space-y-6">
@@ -841,6 +841,18 @@ function BackendReport({
         </div>
         <ScoreCircle score={overall_score} />
       </div>
+
+      {/* ── Transcript ── */}
+      {report.transcript && (
+        <div>
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">🎙️ Whisper Transcript</p>
+          <div className="bg-[#f4f2ef] rounded-xl px-4 py-3 border border-[#e5e7eb]">
+            <p className="text-sm text-[#374151] leading-relaxed italic">
+              "{report.transcript}"
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Feedback tips ── */}
       <div>
@@ -879,15 +891,14 @@ function BackendReport({
         </div>
       </div>
 
-      {/* ── Head pose + emotion stats ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      {/* ── Head pose + emotion + acoustic stats ── */}
+      <div className={`grid grid-cols-1 ${acoustic_stats ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-5`}>
         <div>
           <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">👤 Head &amp; Gaze</p>
           <StatRow label="Eye Contact"          value={`${(head_pose.avg_eye_contact * 100).toFixed(0)}%`} />
           <StatRow label="Head Pose (Yaw)"      value={`${(head_pose.avg_head_pose * 100).toFixed(0)}%`} />
           <StatRow label="Head Pitch"           value={`${head_pose.avg_head_pitch.toFixed(1)}°`} />
           <StatRow label="Head Roll"            value={`${head_pose.avg_head_roll.toFixed(1)}°`} />
-          <StatRow label="Script Reading"       value={head_pose.script_reading_detected ? "Detected" : "Not detected"} />
         </div>
         <div>
           <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">🧠 Emotion Signals</p>
@@ -897,7 +908,64 @@ function BackendReport({
           <StatRow label="Frown"     value={`${(emotion.avg_frown * 100).toFixed(0)}%`} />
           <StatRow label="Smile"     value={`${(emotion.avg_smile * 100).toFixed(0)}%`} />
         </div>
+        {acoustic_stats && (
+          <div>
+            <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">🎵 Acoustic Stats</p>
+            <StatRow label="WPM"              value={acoustic_stats.wpm.toFixed(0)} />
+            <StatRow label="Articulation Rate" value={`${acoustic_stats.articulation_rate.toFixed(0)} wpm`} />
+            <StatRow label="Filler Words"     value={`${(acoustic_stats.filler_word_ratio * 100).toFixed(1)}%`} />
+            <div className="my-2 border-b border-[#f4f2ef]"></div>
+            <StatRow label="Pitch Variation"  value={acoustic_stats.pitch_variation.toFixed(2)} />
+            <StatRow label="Avg Volume"       value={acoustic_stats.avg_volume.toFixed(3)} />
+            <StatRow label="Pause Count"      value={`${acoustic_stats.pause_count}`} />
+            <StatRow label="Longest Pause"    value={`${acoustic_stats.longest_pause_ms.toFixed(0)} ms`} />
+          </div>
+        )}
       </div>
+
+      {/* ── Linguistic Stats ── */}
+      {report.linguistic_stats && (
+        <div className="bg-[#f8f9fa] rounded-xl border border-[#e5e7eb] p-4">
+          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">📝 Language & Vocabulary</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <StatRow label="Weak Words Found" value={report.linguistic_stats.weak_words_count} />
+              {report.linguistic_stats.weak_words_count > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {report.linguistic_stats.weak_words_found.map((w, i) => (
+                    <span key={i} className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md">{w}</span>
+                  ))}
+                </div>
+              )}
+              
+              <div className="mt-4">
+                <StatRow label="Non-Inclusive Terms" value={report.linguistic_stats.non_inclusive_terms.length} />
+                {report.linguistic_stats.non_inclusive_terms.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {report.linguistic_stats.non_inclusive_terms.map((w, i) => (
+                      <span key={i} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-md">{w}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <StatRow label="Run-on Sentences (>40 words)" value={report.linguistic_stats.run_on_sentences} />
+              <div className="mt-4">
+                <StatRow label="Top Repeated Words" value={report.linguistic_stats.top_repeated_words.length > 0 ? "" : "None"} />
+                {report.linguistic_stats.top_repeated_words.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {report.linguistic_stats.top_repeated_words.map((w, i) => (
+                      <span key={i} className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md">{w}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Detected Events ── */}
       <div>
@@ -930,7 +998,6 @@ function BackendReport({
                     gaze_away:         "text-orange-600 bg-orange-50",
                     high_anxiety:      "text-red-600 bg-red-50",
                     high_stress:       "text-red-600 bg-red-50",
-                    script_reading:    "text-purple-600 bg-purple-50",
                     smile:             "text-green-600 bg-green-50",
                     eye_closure:       "text-blue-600 bg-blue-50",
                   };

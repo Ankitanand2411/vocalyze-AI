@@ -57,7 +57,6 @@ export interface FrameAnalysisEntry {
 
   // ── Advanced metrics ──────────────────────────────────────────────────────
   faceWidth: number;
-  isReadingScript: boolean;
 
   // ── Body pose — always zeroed (PoseLandmarker dropped for CPU perf) ──────
   poseDetected: false;
@@ -166,7 +165,16 @@ function scoreFrame(
 
   // Blendshape scores — O(1) Map lookups
   const get = (name: string) => blendshapeMap.get(name) ?? 0;
-  const mouthOpenScore = get("jawOpen") || get("mouthOpen");
+
+  // Google Recommended Mouth Open (Speaking) calculation using inner lip landmarks
+  const upperLip = pts[13];
+  const lowerLip = pts[14];
+  let mouthOpenScore = 0.0;
+  if (upperLip && lowerLip) {
+    const lipDistance = Math.abs(upperLip.y - lowerLip.y);
+    // Y coordinates are normalized (0 to 1). A typical distance > 0.01 indicates speaking.
+    mouthOpenScore = lipDistance > 0.01 ? 1.0 : 0.0;
+  }
   const smileScore     = Math.min(1, get("mouthSmileLeft") + get("mouthSmileRight"));
   const blinkScore     = (get("eyeBlinkLeft") + get("eyeBlinkRight")) / 2;
   const anxietyScore   = get("browInnerUp");
@@ -192,8 +200,8 @@ function scoreFrame(
     const lipGap = Math.abs(pts[13].y - pts[14].y);
     const faceHeight = Math.abs(pts[10].y - pts[152].y) || 1;
     const normalizedGap = lipGap / faceHeight;
-    // If lips are parted > 5% of face height, but jaw is nearly shut
-    if (normalizedGap > 0.05 && get("jawOpen") < 0.1) {
+    // If lips are parted > 2% of face height, but jaw is nearly shut
+    if (normalizedGap > 0.02 && get("jawOpen") < 0.1) {
       tongueProtrusion = 1.0;
     }
   }
@@ -368,21 +376,6 @@ export async function analyzeVideo(
 
           const scores = scoreFrame(landmarks, blendshapeMap);
 
-          // Script-reading detection (gaze switching left↔right repeatedly)
-          gazeHistory.push(scores.gazeZone);
-          if (gazeHistory.length > 40) gazeHistory.shift();
-          let isReadingScript = false;
-          if (gazeHistory.length === 40 && scores.headPoseScore > 0.8) {
-            let switches = 0;
-            for (let i = 1; i < gazeHistory.length; i++) {
-              if (
-                gazeHistory[i] !== gazeHistory[i - 1] &&
-                (gazeHistory[i] === "left" || gazeHistory[i] === "right")
-              ) switches++;
-            }
-            isReadingScript = switches >= 4;
-          }
-
           frameAnalysis.push({
             timestamp: tMs,
             eyeContactScore: scores.eyeContactScore,
@@ -401,7 +394,6 @@ export async function analyzeVideo(
             mockingScore:    scores.mockingScore,
             gazeZone:        scores.gazeZone,
             faceWidth:       scores.faceWidth,
-            isReadingScript,
             // PoseLandmarker dropped — too expensive on CPU
             poseDetected:      false,
             postureScore:      0,
