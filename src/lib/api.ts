@@ -38,6 +38,7 @@ export interface AcousticStats {
   pause_count: number;
   longest_pause_ms: number;
   total_pause_time_ms: number;
+  avg_pause_ms: number;
   wpm: number;
   articulation_rate: number;
   filler_word_ratio: number;
@@ -46,9 +47,9 @@ export interface AcousticStats {
 export interface LinguisticStats {
   weak_words_count: number;
   weak_words_found: string[];
-  non_inclusive_terms: string[];
   run_on_sentences: number;
   top_repeated_words: string[];
+  filler_words_found: string[];
 }
 
 export interface AnalysisResponse {

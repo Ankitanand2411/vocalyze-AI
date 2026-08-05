@@ -911,14 +911,15 @@ function BackendReport({
         {acoustic_stats && (
           <div>
             <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-2">🎵 Acoustic Stats</p>
-            <StatRow label="WPM"              value={acoustic_stats.wpm.toFixed(0)} />
-            <StatRow label="Articulation Rate" value={`${acoustic_stats.articulation_rate.toFixed(0)} wpm`} />
-            <StatRow label="Filler Words"     value={`${(acoustic_stats.filler_word_ratio * 100).toFixed(1)}%`} />
+            <StatRow label="WPM"              value={acoustic_stats.wpm?.toFixed(0) ?? "0"} />
+            <StatRow label="Articulation Rate" value={`${acoustic_stats.articulation_rate?.toFixed(0) ?? "0"} wpm`} />
+            <StatRow label="Filler Words"     value={`${((acoustic_stats.filler_word_ratio ?? 0) * 100).toFixed(1)}%`} />
             <div className="my-2 border-b border-[#f4f2ef]"></div>
             <StatRow label="Pitch Variation"  value={acoustic_stats.pitch_variation.toFixed(2)} />
             <StatRow label="Avg Volume"       value={acoustic_stats.avg_volume.toFixed(3)} />
             <StatRow label="Pause Count"      value={`${acoustic_stats.pause_count}`} />
             <StatRow label="Longest Pause"    value={`${acoustic_stats.longest_pause_ms.toFixed(0)} ms`} />
+            <StatRow label="Avg Pause"        value={`${acoustic_stats.avg_pause_ms.toFixed(0)} ms`} />
           </div>
         )}
       </div>
@@ -937,13 +938,13 @@ function BackendReport({
                   ))}
                 </div>
               )}
-              
+
               <div className="mt-4">
-                <StatRow label="Non-Inclusive Terms" value={report.linguistic_stats.non_inclusive_terms.length.toString()} />
-                {report.linguistic_stats.non_inclusive_terms.length > 0 && (
+                <StatRow label="Filler Words Found" value={report.linguistic_stats.filler_words_found.length.toString()} />
+                {report.linguistic_stats.filler_words_found.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {report.linguistic_stats.non_inclusive_terms.map((w, i) => (
-                      <span key={i} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-md">{w}</span>
+                    {report.linguistic_stats.filler_words_found.map((w, i) => (
+                      <span key={i} className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md">{w}</span>
                     ))}
                   </div>
                 )}
@@ -1000,6 +1001,7 @@ function BackendReport({
                     high_stress:       "text-red-600 bg-red-50",
                     smile:             "text-green-600 bg-green-50",
                     eye_closure:       "text-blue-600 bg-blue-50",
+                    long_pause:        "text-purple-600 bg-purple-50",
                   };
                   const cls = typeColor[ev.type] ?? "text-[#6b7280] bg-[#f4f2ef]";
                   return (
