@@ -114,28 +114,30 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-[#090a0f] bg-grid-pattern text-[#f3f4f6]">
+    <div className={`bg-[#090a0f] bg-grid-pattern text-[#f3f4f6] ${
+      activeTab === "platform" ? "h-screen flex flex-col justify-between overflow-hidden" : "min-h-screen flex flex-col justify-between"
+    }`}>
       {/* Persistent Widescreen Navbar */}
-      <header className="border-b border-white/10 bg-[#090a0f]/90 backdrop-blur-sm px-8 lg:px-16 py-5">
+      <header className="border-b border-white/10 bg-[#090a0f]/90 backdrop-blur-sm px-6 lg:px-12 py-3.5 flex-shrink-0">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
           {/* Logo */}
           <div 
-            className="flex items-center gap-3 cursor-pointer" 
+            className="flex items-center gap-2.5 cursor-pointer" 
             onClick={() => switchTab("platform")}
           >
-            <div className="w-9 h-9 rounded bg-emerald-500 flex items-center justify-center text-slate-950 font-black text-sm font-mono">
+            <div className="w-8 h-8 rounded bg-emerald-500 flex items-center justify-center text-slate-950 font-black text-xs font-mono">
               V
             </div>
-            <span className="text-lg font-black tracking-tight text-white font-mono uppercase">
+            <span className="text-base font-black tracking-tight text-white font-mono uppercase">
               Vocalyze <span className="text-emerald-400 font-normal">AI</span>
             </span>
           </div>
 
           {/* Navigation Links with Active State */}
-          <nav className="flex items-center gap-4 sm:gap-8 text-sm font-mono font-semibold">
+          <nav className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm font-mono font-semibold">
             <button
               onClick={() => switchTab("platform")}
-              className={`px-4 py-2 rounded transition-colors ${
+              className={`px-3 py-1.5 rounded transition-colors ${
                 activeTab === "platform"
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/40"
                   : "text-slate-400 hover:text-white"
@@ -145,7 +147,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
             </button>
             <button
               onClick={() => switchTab("telemetry")}
-              className={`px-4 py-2 rounded transition-colors ${
+              className={`px-3 py-1.5 rounded transition-colors ${
                 activeTab === "telemetry"
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/40"
                   : "text-slate-400 hover:text-white"
@@ -155,9 +157,9 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
             </button>
             <button
               onClick={() => switchTab("modules")}
-              className={`px-4 py-2 rounded transition-colors ${
+              className={`px-3 py-1.5 rounded transition-colors ${
                 activeTab === "modules"
-                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/40"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
                   : "text-slate-400 hover:text-white"
               }`}
             >
@@ -168,39 +170,41 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
           {/* Right Action button */}
           <button 
             onClick={() => onSelectImpromptu(customPrompt)}
-            className="btn-primary text-xs px-5 py-2.5 rounded font-mono font-bold tracking-wide hidden sm:inline-block uppercase"
+            className="btn-primary text-xs px-4 py-2 rounded font-mono font-bold tracking-wide hidden sm:inline-block uppercase"
           >
             Start Session
           </button>
         </div>
       </header>
 
-      {/* Main Widescreen Content Area */}
-      <main className="flex-1 flex flex-col justify-center max-w-[1400px] w-full mx-auto px-8 lg:px-16 py-12 animate-fade-in">
-        {/* PAGE 1: PLATFORM (Bold Screen-Filling Agent 402 Scale) */}
+      {/* Main Content Area */}
+      <main className={`flex-1 flex flex-col justify-center max-w-[1400px] w-full mx-auto px-6 lg:px-12 animate-fade-in ${
+        activeTab === "platform" ? "py-2 overflow-hidden" : "py-12"
+      }`}>
+        {/* PAGE 1: PLATFORM (Tailored to fit 100% inside viewport frame with ZERO scrolling) */}
         {activeTab === "platform" && (
-          <div className="w-full space-y-12 my-auto">
-            {/* Bold Headline (Agent 402 Bold Typography Pattern) */}
-            <div className="text-center max-w-5xl mx-auto space-y-4">
-              <div className="font-mono text-xs uppercase tracking-[0.25em] text-slate-400 font-bold">
+          <div className="w-full space-y-4 my-auto">
+            {/* Bold Headline */}
+            <div className="text-center max-w-4xl mx-auto space-y-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400 font-bold">
                 [ SYSTEM // VOCALYZE 1.0 ]
               </div>
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black uppercase tracking-tight text-white leading-none">
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight text-white leading-none">
                 Speech &amp; Delivery <span className="text-emerald-400 font-normal">Analysis</span>
               </h1>
-              <p className="text-base sm:text-lg lg:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-medium">
+              <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mx-auto leading-relaxed font-medium">
                 Engineered for real-time MediaPipe gaze tracking, posture metrics, and Whisper acoustic analytics.
               </p>
             </div>
 
-            {/* Widescreen Bento Studio Console Workspace */}
+            {/* Viewport-Fitted Bento Studio Console Workspace */}
             <div className="bento-card bg-[#11131a]/95 shadow-2xl border-white/10">
-              <div className="bento-card-header px-8 py-5 flex items-center justify-between bg-[#0d0f17]">
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-sm font-bold text-slate-200 uppercase tracking-wider">
+              <div className="bento-card-header px-6 py-3 flex items-center justify-between bg-[#0d0f17]">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-xs font-bold text-slate-200 uppercase tracking-wider">
                     WORKSPACE_CONSOLE // SESSION_01
                   </span>
-                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/30">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/30">
                     ONLINE
                   </span>
                 </div>
@@ -211,107 +215,107 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
 
               <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/10">
                 {/* Left Pane (7 cols): Prompt Configuration */}
-                <div className="lg:col-span-7 p-8 space-y-6">
+                <div className="lg:col-span-7 p-5 space-y-3.5">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs uppercase font-bold text-slate-300 tracking-wider">
                       01 // PROMPT CONFIGURATION
                     </span>
-                    <span className="font-mono text-xs text-slate-400 font-medium">
+                    <span className="font-mono text-[11px] text-slate-400 font-medium">
                       Source: Custom Input
                     </span>
                   </div>
 
-                  {/* Large Preset Chips */}
-                  <div className="flex flex-wrap gap-2.5">
+                  {/* Preset Chips */}
+                  <div className="flex flex-wrap gap-2">
                     {PRESET_PROMPTS.map((p) => (
                       <button
                         key={p.id}
                         onClick={() => setCustomPrompt(p.text)}
-                        className={`px-4 py-2.5 rounded text-xs font-mono font-semibold transition-all border ${
+                        className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition-all border ${
                           customPrompt === p.text
                             ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-sm"
                             : "bg-[#161822] border-white/10 text-slate-300 hover:text-white hover:border-white/20"
                         }`}
                       >
-                        <span className="text-slate-500 mr-2">{p.num}</span>
+                        <span className="text-slate-500 mr-1.5">{p.num}</span>
                         {p.label}
                       </button>
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
-                    <span className="font-mono text-xs text-slate-400 font-bold uppercase tracking-wider">PROMPT_TEXT_INPUT</span>
+                  <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <span className="font-mono text-[11px] text-slate-400 font-bold uppercase tracking-wider">PROMPT_TEXT_INPUT</span>
                     <button 
                       onClick={() => setCustomPrompt(PRESET_PROMPTS[Math.floor(Math.random() * PRESET_PROMPTS.length)].text)}
-                      className="font-mono text-xs text-slate-300 hover:text-white bg-slate-800 px-3.5 py-1.5 rounded border border-white/10 hover:border-white/20 transition-colors font-medium"
+                      className="font-mono text-[11px] text-slate-300 hover:text-white bg-slate-800 px-3 py-1 rounded border border-white/10 hover:border-white/20 transition-colors font-medium"
                     >
                       Randomize Prompt
                     </button>
                   </div>
 
-                  {/* Large High-Contrast Textarea */}
+                  {/* Textarea compact fit */}
                   <div>
                     <textarea
                       value={customPrompt}
                       onChange={(e) => setCustomPrompt(e.target.value)}
                       placeholder="Enter speech prompt..."
-                      rows={4}
-                      className="w-full bg-[#090a0f] border border-white/15 rounded-xl p-5 text-base sm:text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500/70 transition-colors resize-none font-sans leading-relaxed shadow-inner"
+                      rows={3}
+                      className="w-full bg-[#090a0f] border border-white/15 rounded-lg p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500/70 transition-colors resize-none font-sans leading-relaxed shadow-inner"
                     />
                   </div>
 
                   {/* Action Bar */}
-                  <div className="flex items-center justify-between pt-3">
-                    <span className="font-mono text-xs text-slate-400 font-medium">
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-mono text-[11px] text-slate-400 font-medium">
                       Zero cloud storage before analysis
                     </span>
                     <button
                       onClick={handleStartSession}
                       id="generate-video-btn"
-                      className="btn-primary text-sm font-bold px-7 py-3.5 rounded-lg flex items-center gap-3 font-mono tracking-wide uppercase shadow-lg cursor-pointer"
+                      className="btn-primary text-xs font-bold px-6 py-2.5 rounded-lg flex items-center gap-2.5 font-mono tracking-wide uppercase shadow-lg cursor-pointer"
                     >
                       <span>Start Practice Session</span>
-                      <span className="text-xs opacity-80 font-normal">[ ↵ ]</span>
+                      <span className="text-[10px] opacity-80 font-normal">[ ↵ ]</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Right Pane (5 cols): Pipeline Diagnostics */}
-                <div className="lg:col-span-5 p-8 bg-[#0e1017]/70 flex flex-col justify-between space-y-8">
+                <div className="lg:col-span-5 p-5 bg-[#0e1017]/70 flex flex-col justify-between space-y-4">
                   <div>
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center justify-between mb-4">
                       <span className="font-mono text-xs uppercase font-bold text-slate-300 tracking-wider">
                         02 // PIPELINE DIAGNOSTICS
                       </span>
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                     </div>
 
-                    <div className="space-y-4 font-mono text-sm">
-                      <div className="flex justify-between items-center py-2.5 border-b border-white/10">
+                    <div className="space-y-2.5 font-mono text-xs">
+                      <div className="flex justify-between items-center py-2 border-b border-white/10">
                         <span className="text-slate-400">MediaPipe Vision</span>
                         <span className="text-emerald-400 font-bold">INITIALIZED</span>
                       </div>
-                      <div className="flex justify-between items-center py-2.5 border-b border-white/10">
+                      <div className="flex justify-between items-center py-2 border-b border-white/10">
                         <span className="text-slate-400">Whisper Audio</span>
                         <span className="text-slate-200 font-medium">128 kbps WebM</span>
                       </div>
-                      <div className="flex justify-between items-center py-2.5 border-b border-white/10">
+                      <div className="flex justify-between items-center py-2 border-b border-white/10">
                         <span className="text-slate-400">Sampling Rate</span>
                         <span className="text-slate-200 font-medium">5 FPS / 200ms</span>
                       </div>
-                      <div className="flex justify-between items-center py-2.5 border-b border-white/10">
+                      <div className="flex justify-between items-center py-2 border-b border-white/10">
                         <span className="text-slate-400">Privacy Layer</span>
                         <span className="text-emerald-400 font-bold">ON-DEVICE</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-[#090a0f] p-5 rounded-xl border border-white/10 font-mono text-xs space-y-2">
-                    <div className="flex justify-between text-slate-300 font-semibold">
+                  <div className="bg-[#090a0f] p-3.5 rounded-lg border border-white/10 font-mono text-xs space-y-1.5">
+                    <div className="flex justify-between text-slate-300 font-semibold text-[11px]">
                       <span>System Readiness</span>
                       <span className="text-emerald-400 font-bold">100% READY</span>
                     </div>
-                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-400 w-full" />
                     </div>
                   </div>
@@ -321,7 +325,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
           </div>
         )}
 
-        {/* PAGE 2: TELEMETRY (Bold Widescreen Scale) */}
+        {/* PAGE 2: TELEMETRY (UNCHANGED) */}
         {activeTab === "telemetry" && (
           <div className="w-full space-y-10 my-auto">
             <div>
@@ -365,7 +369,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
           </div>
         )}
 
-        {/* PAGE 3: MODULES (Bold Widescreen Scale) */}
+        {/* PAGE 3: MODULES (UNCHANGED) */}
         {activeTab === "modules" && (
           <div className="w-full space-y-10 my-auto">
             <div>
@@ -439,7 +443,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
       </main>
 
       {/* Persistent Widescreen Footer */}
-      <footer className="border-t border-white/10 py-5 px-8 lg:px-16 bg-[#090a0f]/90 backdrop-blur-sm">
+      <footer className="border-t border-white/10 py-3.5 px-6 lg:px-12 bg-[#090a0f]/90 backdrop-blur-sm flex-shrink-0">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between text-xs font-mono text-slate-400 font-medium">
           <span>Vocalyze AI v1.0</span>
           <span>High-Precision Diagnostic Architecture</span>
