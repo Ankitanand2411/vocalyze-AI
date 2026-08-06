@@ -630,7 +630,7 @@ function BackendReport({
             Audio Transcript
           </p>
           <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
-            <p className="text-xs text-slate-800 leading-relaxed italic font-medium">
+            <p className="text-xs text-slate-800 leading-relaxed italic font-medium break-words whitespace-pre-wrap">
               &quot;{report.transcript}&quot;
             </p>
           </div>
@@ -651,6 +651,24 @@ function BackendReport({
           ))}
         </div>
       </div>
+
+      {/* Speaker Insights */}
+      {report.insights && (
+        <div className="bg-blue-50/50 rounded-xl border border-blue-200/60 p-4 mb-6">
+          <p className="text-[11px] font-mono font-bold text-blue-700 uppercase tracking-wider mb-3">Speaker Insights</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <InfoTile label="Pacing" value={report.insights.pacing_status} />
+            <InfoTile label="Vocal Variety" value={report.insights.vocal_variety} />
+            <InfoTile label="Audience Connection" value={`${report.insights.audience_connection_pct.toFixed(0)}%`} />
+            <InfoTile label="Warmth" value={report.insights.warmth_index} />
+            <InfoTile label="Presence" value={report.insights.fidget_index} />
+            <InfoTile label="Fillers" value={report.insights.filler_severity} />
+          </div>
+          <p className="mt-3 text-[10px] text-blue-600/80 font-medium italic">
+            * Note: Your silence ratio was {report.insights.silence_ratio_pct}%.
+          </p>
+        </div>
+      )}
 
       {/* Gaze Breakdown */}
       <div>

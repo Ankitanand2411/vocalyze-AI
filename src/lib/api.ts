@@ -52,6 +52,16 @@ export interface LinguisticStats {
   filler_words_found: string[];
 }
 
+export interface DerivedInsights {
+  pacing_status: string;
+  vocal_variety: string;
+  silence_ratio_pct: number;
+  audience_connection_pct: number;
+  warmth_index: string;
+  fidget_index: string;
+  filler_severity: string;
+}
+
 export interface AnalysisResponse {
   audio_received_bytes: number;
   frame_count: number;
@@ -61,6 +71,7 @@ export interface AnalysisResponse {
   head_pose: HeadPoseSummary;
   acoustic_stats?: AcousticStats;
   linguistic_stats?: LinguisticStats;
+  insights?: DerivedInsights;
   overall_score: number;
   feedback: string[];
   detected_events: DetectedEvent[];
