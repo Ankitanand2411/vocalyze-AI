@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 interface TopicScreenProps {
   initialTopic?: string;
-  onStartRecording: (topic: string) => void;
+  onStart: (topic: string) => void;
   onBack: () => void;
 }
 
@@ -17,7 +17,7 @@ const PRESET_TOPICS = [
 
 const PREP_DURATION = 15; // 15 seconds prep timer
 
-export default function TopicScreen({ initialTopic, onStartRecording, onBack }: TopicScreenProps) {
+export default function TopicScreen({ initialTopic, onStart, onBack }: TopicScreenProps) {
   const [topic, setTopic] = useState(
     initialTopic || PRESET_TOPICS[0]
   );
@@ -29,7 +29,7 @@ export default function TopicScreen({ initialTopic, onStartRecording, onBack }: 
     if (!isTimerRunning) return;
 
     if (timeLeft <= 0) {
-      onStartRecording(topic);
+      onStart(topic);
       return;
     }
 
@@ -38,7 +38,7 @@ export default function TopicScreen({ initialTopic, onStartRecording, onBack }: 
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, isTimerRunning, topic, onStartRecording]);
+  }, [timeLeft, isTimerRunning, topic, onStart]);
 
   const handleRandomize = () => {
     const remaining = PRESET_TOPICS.filter((t) => t !== topic);
@@ -49,7 +49,7 @@ export default function TopicScreen({ initialTopic, onStartRecording, onBack }: 
 
   const handleStartNow = () => {
     setIsTimerRunning(false);
-    onStartRecording(topic);
+    onStart(topic);
   };
 
   const progressPct = ((PREP_DURATION - timeLeft) / PREP_DURATION) * 100;

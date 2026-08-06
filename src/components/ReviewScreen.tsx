@@ -45,7 +45,6 @@ function DebugInspector({
   const [copied, setCopied] = useState(false);
 
   const [clockMs, setClockMs] = useState<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const dbgVideoRef = useRef<HTMLVideoElement>(null);
   const clockRafRef = useRef<number>(0);
 
@@ -57,19 +56,16 @@ function DebugInspector({
   }, []);
 
   const handleVideoPlay = useCallback(() => {
-    setIsPlaying(true);
     clockRafRef.current = requestAnimationFrame(tickClock);
   }, [tickClock]);
 
   const handleVideoPause = useCallback(() => {
-    setIsPlaying(false);
     cancelAnimationFrame(clockRafRef.current);
     const v = dbgVideoRef.current;
     if (v) setClockMs(Math.round(v.currentTime * 1000));
   }, []);
 
   const handleVideoEnded = useCallback(() => {
-    setIsPlaying(false);
     cancelAnimationFrame(clockRafRef.current);
   }, []);
 
@@ -220,26 +216,26 @@ function DebugInspector({
   };
 
   return (
-    <div className="mt-8 border border-white/10 rounded-xl overflow-hidden bg-[#12141c]">
+    <div className="mt-8 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-900/80 hover:bg-slate-900 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"
         aria-expanded={open}
       >
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold text-white">Debug & Telemetry Inspector</span>
+          <span className="text-xs font-bold text-slate-800 font-mono">Debug &amp; Telemetry Inspector</span>
           {frameAnalysis.length > 0 && (
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
               sanity.passed === sanity.total
-                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                : "bg-amber-100 text-amber-800 border-amber-300"
             }`}>
               {sanity.passed}/{sanity.total} Checks Passed
             </span>
           )}
         </div>
         <svg
-          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -247,26 +243,26 @@ function DebugInspector({
       </button>
 
       {open && (
-        <div className="px-5 pb-6 pt-5 bg-[#090a0f] space-y-6 border-t border-white/5">
+        <div className="px-5 pb-6 pt-5 bg-white space-y-6">
           {frameAnalysis.length === 0 && (
-            <div className="text-xs text-slate-400 bg-[#12141c] rounded-lg px-4 py-3 border border-white/5">
+            <div className="text-xs text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
               No movement telemetry yet. Click &quot;Analyze Recording&quot; above to run MediaPipe analysis.
             </div>
           )}
 
           <div>
-            <p className="text-[11px] font-mono font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-3">
               Data Verification
             </p>
             <div className="space-y-1.5 mb-4">
               {sanity.checks.map((c) => (
-                <div key={c.label} className="flex items-start gap-2.5 bg-[#12141c] rounded-lg px-3 py-2 border border-white/5">
-                  <span className={`mt-0.5 text-xs font-bold ${c.pass ? "text-emerald-400" : "text-rose-400"}`}>
+                <div key={c.label} className="flex items-start gap-2.5 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+                  <span className={`mt-0.5 text-xs font-extrabold ${c.pass ? "text-emerald-600" : "text-rose-600"}`}>
                     {c.pass ? "✓" : "✗"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-200">{c.label}</p>
-                    <p className="text-[10px] text-slate-400">{c.detail}</p>
+                    <p className="text-xs font-bold text-slate-800">{c.label}</p>
+                    <p className="text-[10px] text-slate-500 font-medium">{c.detail}</p>
                   </div>
                 </div>
               ))}
@@ -275,25 +271,25 @@ function DebugInspector({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => downloadBlob(videoBlob, `vocalyze-video-${Date.now()}.webm`)}
-                className="text-xs bg-emerald-500 text-slate-950 font-semibold px-3 py-1.5 rounded transition-colors"
+                className="text-xs bg-[#0f172a] text-white font-bold px-3 py-1.5 rounded transition-colors shadow-sm cursor-pointer"
               >
                 Export Video (.webm)
               </button>
               <button
                 onClick={() => downloadBlob(audioBlob, `vocalyze-audio-${Date.now()}.webm`)}
-                className="text-xs bg-slate-800 text-white font-medium px-3 py-1.5 rounded border border-white/10"
+                className="text-xs bg-slate-100 text-slate-800 font-semibold px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-200 transition-colors"
               >
                 Export Audio (.webm)
               </button>
               <button
                 onClick={() => downloadJson(fullJson, `vocalyze-framedata-${Date.now()}.json`)}
-                className="text-xs border border-white/10 bg-[#12141c] text-slate-300 px-3 py-1.5 rounded hover:text-white transition-colors"
+                className="text-xs border border-slate-300 bg-white text-slate-700 font-semibold px-3 py-1.5 rounded hover:bg-slate-50 transition-colors"
               >
                 Export Frame JSON
               </button>
               <button
                 onClick={() => downloadJson(summaryJson, `vocalyze-summary-${Date.now()}.json`)}
-                className="text-xs border border-white/10 bg-[#12141c] text-slate-300 px-3 py-1.5 rounded hover:text-white transition-colors"
+                className="text-xs border border-slate-300 bg-white text-slate-700 font-semibold px-3 py-1.5 rounded hover:bg-slate-50 transition-colors"
               >
                 Export Summary JSON
               </button>
@@ -301,12 +297,12 @@ function DebugInspector({
           </div>
 
           <div>
-            <p className="text-[11px] font-mono font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-3">
               Video Sync Preview
             </p>
-            <div className="bg-[#12141c] rounded-xl p-3 border border-white/5">
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
               {videoUrl && (
-                <div className="relative rounded-lg overflow-hidden bg-black aspect-[4/3] max-h-[360px]">
+                <div className="relative rounded-lg overflow-hidden bg-slate-900 aspect-[4/3] max-h-[360px]">
                   <video
                     ref={dbgVideoRef}
                     src={videoUrl}
@@ -322,8 +318,8 @@ function DebugInspector({
                     }}
                   />
 
-                  <div className="absolute top-3 left-3 bg-black/80 rounded px-2.5 py-1 pointer-events-none">
-                    <span className="text-white text-[11px] font-mono">
+                  <div className="absolute top-3 left-3 bg-slate-950/80 rounded px-2.5 py-1 pointer-events-none">
+                    <span className="text-white text-[11px] font-mono font-bold">
                       {clockMs !== null ? `t = ${(clockMs / 1000).toFixed(3)} s` : "t = 0.000 s"}
                     </span>
                   </div>
@@ -333,17 +329,17 @@ function DebugInspector({
           </div>
 
           <div>
-            <p className="text-[11px] font-mono font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-3">
               JSON Telemetry
             </p>
             <div className="relative">
               <button
                 onClick={() => handleCopy(jsonTab === "summary" ? summaryJson : fullJson)}
-                className="absolute top-3 right-3 z-10 text-[10px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded border border-white/10"
+                className="absolute top-3 right-3 z-10 text-[10px] text-slate-800 font-bold hover:text-black bg-white px-2.5 py-1 rounded border border-slate-300 shadow-sm"
               >
-                {copied ? "Copied" : "Copy JSON"}
+                {copied ? "✓ Copied" : "Copy JSON"}
               </button>
-              <pre className="bg-[#05060a] text-emerald-400 text-[11px] leading-relaxed rounded-xl p-4 overflow-auto max-h-64 font-mono border border-white/10">
+              <pre className="bg-[#0f172a] text-emerald-300 text-[11px] leading-relaxed rounded-xl p-4 overflow-auto max-h-64 font-mono border border-slate-300">
                 {JSON.stringify(jsonTab === "summary" ? summaryJson : fullJson, null, 2)}
               </pre>
             </div>
@@ -431,21 +427,21 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
         <div className="flex items-center justify-between mb-6">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors bg-slate-900 border border-white/10 px-3 py-1.5 rounded-lg"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-bold hover:text-slate-900 transition-colors bg-white border border-slate-300 px-3.5 py-1.5 rounded-lg shadow-sm cursor-pointer"
             aria-label="Back to modules"
           >
-            <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
             <span>Back to Modules</span>
           </button>
-          <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/20">
+          <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded border border-emerald-300 font-mono">
             Session Review
           </span>
         </div>
 
         {/* Video Player Container */}
-        <div className="rounded-2xl overflow-hidden bg-[#12141c] aspect-video border border-white/10 mb-6">
+        <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video border border-slate-300 mb-6 shadow-md">
           {videoUrl && (
             <video
               ref={videoRef}
@@ -466,11 +462,11 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
         </div>
 
         {/* Topic Card */}
-        <div className="bg-[#12141c] rounded-xl p-4 border border-white/10 mb-6">
-          <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-6 shadow-sm">
+          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1">
             Prompt
           </span>
-          <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">&quot;{result.topic}&quot;</p>
+          <p className="text-xs sm:text-sm text-slate-800 font-bold leading-relaxed">&quot;{result.topic}&quot;</p>
         </div>
 
         {/* Action Buttons */}
@@ -479,10 +475,10 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
             id="analyze-btn"
             onClick={handleAnalyze}
             disabled={analysisStatus === "running"}
-            className={`flex-1 py-3 px-6 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-2 ${
+            className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 ${
               analysisStatus === "running"
-                ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
-                : "btn-primary cursor-pointer"
+                ? "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                : "btn-primary cursor-pointer shadow-md"
             }`}
           >
             <span>
@@ -496,7 +492,7 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
           <button
             id="retry-btn"
             onClick={onRetry}
-            className="py-3 px-6 rounded-xl border border-white/10 bg-slate-900 text-slate-300 font-medium text-xs hover:text-white transition-colors"
+            className="py-3.5 px-6 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
           >
             Try Again
           </button>
@@ -504,9 +500,9 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
 
         {analysisStatus === "running" && (
           <div className="mt-4">
-            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-400 transition-all duration-200 linear"
+                className="h-full bg-emerald-600 transition-all duration-200 linear"
                 style={{ width: `${analysisProgress}%` }}
               />
             </div>
@@ -514,7 +510,7 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
         )}
 
         {analysisStatus === "error" && (
-          <p className="mt-4 text-xs text-rose-400 text-center">{analysisError}</p>
+          <p className="mt-4 text-xs text-rose-600 text-center font-bold">{analysisError}</p>
         )}
 
         {mediapipeReady && frameAnalysis.length > 0 && (
@@ -547,9 +543,9 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[#12141c] rounded-xl p-3.5 text-center border border-white/10">
-      <p className="text-[10px] font-mono text-slate-500 uppercase mb-1">{label}</p>
-      <p className="text-xs font-bold font-mono text-white">{value}</p>
+    <div className="bg-white rounded-xl p-3.5 text-center border border-slate-200 shadow-sm">
+      <p className="text-[10px] font-mono text-slate-500 font-bold uppercase mb-1">{label}</p>
+      <p className="text-xs font-extrabold font-mono text-slate-900">{value}</p>
     </div>
   );
 }
@@ -558,21 +554,21 @@ function InfoTile({ label, value }: { label: string; value: string }) {
 
 function ScoreCircle({ score }: { score: number }) {
   const color =
-    score >= 75 ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/10"
-    : score >= 50 ? "text-amber-400 border-amber-500/40 bg-amber-500/10"
-    : "text-rose-400 border-rose-500/40 bg-rose-500/10";
+    score >= 75 ? "text-emerald-700 border-emerald-500 bg-emerald-50"
+    : score >= 50 ? "text-amber-700 border-amber-500 bg-amber-50"
+    : "text-rose-700 border-rose-500 bg-rose-50";
   return (
-    <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center ${color}`}>
-      <span className="text-xl font-bold font-mono">{Math.round(score)}</span>
+    <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center ${color} shadow-sm`}>
+      <span className="text-xl font-black font-mono">{Math.round(score)}</span>
     </div>
   );
 }
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0">
-      <span className="text-xs text-slate-400">{label}</span>
-      <span className="text-xs font-mono text-slate-200">{value}</span>
+    <div className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0">
+      <span className="text-xs text-slate-600 font-medium">{label}</span>
+      <span className="text-xs font-mono font-bold text-slate-900">{value}</span>
     </div>
   );
 }
@@ -592,18 +588,18 @@ function BackendReport({
 
   if (status === "sending") {
     return (
-      <div className="mt-6 bg-[#12141c] rounded-xl p-5 border border-white/10 flex items-center gap-3">
-        <div className="w-4 h-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-        <p className="text-xs text-slate-300">Generating AI diagnostic report…</p>
+      <div className="mt-6 bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex items-center gap-3">
+        <div className="w-4 h-4 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin" />
+        <p className="text-xs text-slate-700 font-medium">Generating AI diagnostic report…</p>
       </div>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="mt-6 bg-[#12141c] rounded-xl border border-rose-500/30 p-5">
-        <p className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-1">Backend Connection Error</p>
-        <p className="text-xs text-slate-400">{error}</p>
+      <div className="mt-6 bg-white rounded-xl border border-rose-300 p-5 shadow-sm">
+        <p className="text-xs font-bold text-rose-700 uppercase tracking-wider mb-1">Backend Connection Error</p>
+        <p className="text-xs text-slate-600">{error}</p>
       </div>
     );
   }
@@ -613,14 +609,14 @@ function BackendReport({
   const { overall_score, feedback, gaze, emotion, head_pose, acoustic_stats, audio_received_bytes, frame_count, face_detected_pct } = report;
 
   return (
-    <div className="mt-6 bg-[#12141c] rounded-2xl p-6 border border-white/10 space-y-6">
+    <div className="mt-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
       {/* Header + Score */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-4">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
         <div>
-          <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider block mb-1">
+          <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block mb-1 font-mono">
             Diagnostic Coaching Report
           </span>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-600 font-medium">
             {frame_count} frames analyzed · {face_detected_pct.toFixed(0)}% face coverage · {(audio_received_bytes / 1024).toFixed(1)} KB audio
           </p>
         </div>
@@ -630,11 +626,11 @@ function BackendReport({
       {/* Transcript */}
       {report.transcript && (
         <div>
-          <p className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-2">
+          <p className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-2">
             Audio Transcript
           </p>
-          <div className="bg-[#090a0f] rounded-xl p-3.5 border border-white/5">
-            <p className="text-xs text-slate-300 leading-relaxed italic">
+          <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+            <p className="text-xs text-slate-800 leading-relaxed italic font-medium">
               &quot;{report.transcript}&quot;
             </p>
           </div>
@@ -643,13 +639,13 @@ function BackendReport({
 
       {/* Coaching Tips */}
       <div>
-        <p className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-2">
+        <p className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-2">
           Coaching Recommendations
         </p>
         <div className="space-y-1.5">
           {feedback.map((tip, i) => (
-            <div key={i} className="text-xs text-slate-300 leading-relaxed bg-[#090a0f] rounded-lg px-3 py-2 border border-white/5 flex items-start gap-2">
-              <span className="text-emerald-400 font-bold">•</span>
+            <div key={i} className="text-xs text-slate-800 leading-relaxed bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 flex items-start gap-2 font-medium">
+              <span className="text-emerald-600 font-bold">•</span>
               <span>{tip}</span>
             </div>
           ))}
@@ -658,7 +654,7 @@ function BackendReport({
 
       {/* Gaze Breakdown */}
       <div>
-        <p className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-2">
+        <p className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-2">
           Camera Gaze Distribution
         </p>
         <div className="grid grid-cols-5 gap-2 text-center">
@@ -669,12 +665,12 @@ function BackendReport({
             { label: "Down",   pct: gaze.down_pct,   good: false },
             { label: "Away",   pct: gaze.away_pct,   good: false },
           ] as const).map(({ label, pct, good }) => (
-            <div key={label} className="bg-[#090a0f] rounded-lg p-2 border border-white/5">
-              <p className="text-[9px] text-slate-500 uppercase">{label}</p>
-              <p className={`text-xs font-bold font-mono mt-0.5 ${
-                good && pct > 50 ? "text-emerald-400"
-                : !good && pct > 30 ? "text-amber-400"
-                : "text-slate-300"
+            <div key={label} className="bg-slate-50 rounded-lg p-2 border border-slate-200">
+              <p className="text-[9px] text-slate-500 font-bold uppercase">{label}</p>
+              <p className={`text-xs font-black font-mono mt-0.5 ${
+                good && pct > 50 ? "text-emerald-700"
+                : !good && pct > 30 ? "text-amber-700"
+                : "text-slate-800"
               }`}>
                 {pct.toFixed(0)}%
               </p>
@@ -685,23 +681,23 @@ function BackendReport({
 
       {/* Metrics breakdown */}
       <div className={`grid grid-cols-1 ${acoustic_stats ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-4`}>
-        <div className="bg-[#090a0f] rounded-xl p-3.5 border border-white/5">
-          <p className="text-[11px] font-mono text-slate-400 uppercase mb-2">Head &amp; Gaze</p>
+        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+          <p className="text-[11px] font-mono font-bold text-slate-700 uppercase mb-2">Head &amp; Gaze</p>
           <StatRow label="Eye Contact"          value={`${(head_pose.avg_eye_contact * 100).toFixed(0)}%`} />
           <StatRow label="Head Pose (Yaw)"      value={`${(head_pose.avg_head_pose * 100).toFixed(0)}%`} />
           <StatRow label="Head Pitch"           value={`${head_pose.avg_head_pitch.toFixed(1)}°`} />
           <StatRow label="Head Roll"            value={`${head_pose.avg_head_roll.toFixed(1)}°`} />
         </div>
-        <div className="bg-[#090a0f] rounded-xl p-3.5 border border-white/5">
-          <p className="text-[11px] font-mono text-slate-400 uppercase mb-2">Emotion Signals</p>
+        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+          <p className="text-[11px] font-mono font-bold text-slate-700 uppercase mb-2">Emotion Signals</p>
           <StatRow label="Anxiety"   value={`${(emotion.avg_anxiety * 100).toFixed(0)}%`} />
           <StatRow label="Confusion" value={`${(emotion.avg_confusion * 100).toFixed(0)}%`} />
           <StatRow label="Stress"    value={`${(emotion.avg_stress * 100).toFixed(0)}%`} />
           <StatRow label="Smile"     value={`${(emotion.avg_smile * 100).toFixed(0)}%`} />
         </div>
         {acoustic_stats && (
-          <div className="bg-[#090a0f] rounded-xl p-3.5 border border-white/5">
-            <p className="text-[11px] font-mono text-slate-400 uppercase mb-2">Audio Telemetry</p>
+          <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+            <p className="text-[11px] font-mono font-bold text-slate-700 uppercase mb-2">Audio Telemetry</p>
             <StatRow label="Pacing (WPM)"       value={acoustic_stats.wpm?.toFixed(0) ?? "0"} />
             <StatRow label="Articulation"      value={`${acoustic_stats.articulation_rate?.toFixed(0) ?? "0"} wpm`} />
             <StatRow label="Filler Ratio"      value={`${((acoustic_stats.filler_word_ratio ?? 0) * 100).toFixed(1)}%`} />
@@ -712,22 +708,22 @@ function BackendReport({
 
       {/* Timestamped Events */}
       <div>
-        <p className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-2">
+        <p className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-2">
           Timestamped Events ({report.detected_events.length})
         </p>
         {report.detected_events.length === 0 ? (
-          <p className="text-xs text-slate-500 bg-[#090a0f] rounded-lg p-3 border border-white/5">
+          <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
             No notable events detected.
           </p>
         ) : (
-          <div className="overflow-auto rounded-lg border border-white/5 bg-[#090a0f]">
+          <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-slate-500 uppercase font-mono text-[9px] border-b border-white/5">
-                  <th className="px-3 py-2 text-left font-normal">Event Type</th>
-                  <th className="px-3 py-2 text-right font-normal">Start</th>
-                  <th className="px-3 py-2 text-right font-normal">End</th>
-                  <th className="px-3 py-2 text-right font-normal">Duration</th>
+                <tr className="text-slate-600 bg-slate-50 uppercase font-mono text-[9px] border-b border-slate-200">
+                  <th className="px-3 py-2 text-left font-bold">Event Type</th>
+                  <th className="px-3 py-2 text-right font-bold">Start</th>
+                  <th className="px-3 py-2 text-right font-bold">End</th>
+                  <th className="px-3 py-2 text-right font-bold">Duration</th>
                 </tr>
               </thead>
               <tbody>
@@ -735,14 +731,14 @@ function BackendReport({
                   <tr
                     key={i}
                     onClick={() => onSeek?.(ev.start_ms)}
-                    className="border-t border-white/5 cursor-pointer hover:bg-slate-800/50 transition-colors"
+                    className="border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
                   >
-                    <td className="px-3 py-2 text-emerald-400 font-medium">
+                    <td className="px-3 py-2 text-emerald-700 font-bold">
                       {ev.type.replace(/_/g, " ")}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-400">{(ev.start_ms / 1000).toFixed(2)}s</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-400">{(ev.end_ms / 1000).toFixed(2)}s</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-300">{ev.duration_ms.toFixed(0)}ms</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-600 font-semibold">{(ev.start_ms / 1000).toFixed(2)}s</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-600 font-semibold">{(ev.end_ms / 1000).toFixed(2)}s</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-800 font-bold">{ev.duration_ms.toFixed(0)}ms</td>
                   </tr>
                 ))}
               </tbody>
@@ -762,16 +758,16 @@ function ScoreBar({ label, value, unit = "%", invert = false }: {
   const pct   = unit === "°" ? Math.min(100, Math.abs(value) / 30 * 100) : Math.round(value * 100);
   const display = unit === "°" ? `${value.toFixed(1)}°` : `${pct}%`;
   const color = invert
-    ? pct > 60 ? "bg-rose-500" : pct > 30 ? "bg-amber-400" : "bg-emerald-400"
-    : pct > 65 ? "bg-emerald-400" : pct > 35 ? "bg-amber-400" : "bg-rose-500";
+    ? pct > 60 ? "bg-rose-500" : pct > 30 ? "bg-amber-500" : "bg-emerald-600"
+    : pct > 65 ? "bg-emerald-600" : pct > 35 ? "bg-amber-500" : "bg-rose-500";
 
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs text-slate-400">{label}</span>
-        <span className="text-xs font-mono font-semibold text-white">{display}</span>
+        <span className="text-xs text-slate-600 font-medium">{label}</span>
+        <span className="text-xs font-mono font-bold text-slate-900">{display}</span>
       </div>
-      <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
         <div className={`h-full rounded-full transition-all duration-300 ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
     </div>
@@ -797,9 +793,9 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
   const stress     = avg("stressScore");
 
   return (
-    <div className="mt-6 bg-[#12141c] rounded-2xl p-6 border border-white/10 space-y-6">
+    <div className="mt-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
       <div>
-        <p className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-4">
+        <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-4">
           MediaPipe On-Device Telemetry
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
@@ -814,7 +810,7 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
       </div>
 
       <div>
-        <p className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-4">
+        <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-4">
           Emotion Signals
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { RecordingResult } from "@/app/page";
 
 interface RecordingScreenProps {
@@ -9,194 +9,144 @@ interface RecordingScreenProps {
   onBack: () => void;
 }
 
-type RecordingState =
-  | "requesting"
-  | "recording"
-  | "stopping"
-  | "error_permission"
-  | "error_support";
+type RecordingState = "requesting" | "recording" | "stopping" | "error_permission" | "error_unsupported";
 
 function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, "0")}`;
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export default function RecordingScreen({ topic, onDone, onBack }: RecordingScreenProps) {
   const [state, setState] = useState<RecordingState>("requesting");
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [elapsedMs, setElapsedMs] = useState<number>(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  /**
-   * SHARED CLOCK — set once to Date.now() just before both recorders start.
-   */
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const audioChunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Module A — audio only (→ Whisper, later on backend)
-  const moduleA = {
-    recorderRef: useRef<MediaRecorder | null>(null),
-    chunksRef: useRef<Blob[]>([]),
-  };
-
-  // Module B — audio + video (→ local playback + MediaPipe analysis)
-  const moduleB = {
-    recorderRef: useRef<MediaRecorder | null>(null),
-    chunksRef: useRef<Blob[]>([]),
-  };
-
-  const cleanupAll = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+  // Clean up media stream
+  const stopStream = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
   }, []);
 
+  // Timer helper
+  const startTimer = useCallback(() => {
+    startTimeRef.current = Date.now();
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 200);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+  }, []);
+
+  // Main recorder initialization
   useEffect(() => {
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setState("error_support");
-      return;
-    }
-    if (typeof MediaRecorder === "undefined") {
-      setState("error_support");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setState("error_unsupported");
       return;
     }
 
-    let cancelled = false;
+    let isMounted = true;
 
-    async function boot() {
+    async function initMedia() {
       try {
-        const audioConstraints = {
-          sampleRate: 48000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        };
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
 
-        let stream: MediaStream | null = null;
-        const videoAttempts: MediaStreamConstraints[] = [
-          { video: { width: 640, height: 360, frameRate: 24 }, audio: audioConstraints },
-          { video: { width: 640, height: 360 },                audio: audioConstraints },
-          { video: true,                                        audio: audioConstraints },
-        ];
-        let lastErr: unknown;
-        for (const constraints of videoAttempts) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            break;
-          } catch (err) {
-            lastErr = err;
-          }
-        }
-        if (!stream) throw lastErr;
-        if (cancelled) {
+        if (!isMounted) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
 
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        mediaStreamRef.current = stream;
 
-        // Module A — audio only
-        moduleA.chunksRef.current = [];
-        const audioStream = new MediaStream(stream.getAudioTracks());
-        const recA = new MediaRecorder(audioStream, { audioBitsPerSecond: 128_000 });
-        moduleA.recorderRef.current = recA;
-        recA.ondataavailable = (e) => {
-          if (e.data.size > 0) moduleA.chunksRef.current.push(e.data);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.error("Play video failed:", e));
+        }
+
+        // Setup MediaRecorder
+        const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+        mediaRecorderRef.current = recorder;
+        videoChunksRef.current = [];
+        audioChunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            videoChunksRef.current.push(e.data);
+            audioChunksRef.current.push(e.data);
+          }
         };
 
-        // Module B — audio + video
-        moduleB.chunksRef.current = [];
-        const recB = new MediaRecorder(stream, {
-          videoBitsPerSecond: 800_000,
-          audioBitsPerSecond: 128_000,
-        });
-        moduleB.recorderRef.current = recB;
-        recB.ondataavailable = (e) => {
-          if (e.data.size > 0) moduleB.chunksRef.current.push(e.data);
-        };
-
-        startTimeRef.current = Date.now();
-        recA.start(250);
-        recB.start(250);
-
-        timerRef.current = setInterval(() => {
-          setElapsedMs(Date.now() - startTimeRef.current);
-        }, 500);
-
+        recorder.start(500); // chunk every 500ms
+        startTimer();
         setState("recording");
       } catch (err: unknown) {
-        if (cancelled) return;
-        const error = err as Error;
-        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-          setState("error_permission");
-        } else {
-          setErrorMsg(error.message || "Unknown error accessing camera.");
-          setState("error_permission");
-        }
+        if (!isMounted) return;
+        console.error("Camera access error:", err);
+        const message = err instanceof Error ? err.message : "Camera or Microphone permission denied.";
+        setErrorMsg(message);
+        setState("error_permission");
       }
     }
 
-    boot();
+    initMedia();
 
     return () => {
-      cancelled = true;
-      cleanupAll();
+      isMounted = false;
+      stopTimer();
+      stopStream();
     };
-  }, [cleanupAll]);
+  }, [startTimer, stopTimer, stopStream]);
 
+  // Handle Stop Recording
   const handleStop = useCallback(() => {
-    if (state !== "recording") return;
+    if (state !== "recording" || !mediaRecorderRef.current) return;
+
     setState("stopping");
+    stopTimer();
 
-    const durationMs = Date.now() - startTimeRef.current;
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    const recorder = mediaRecorderRef.current;
 
-    let aSettled = false;
-    let bSettled = false;
+    recorder.onstop = () => {
+      const finalDuration = Date.now() - startTimeRef.current;
+      const videoBlob = new Blob(videoChunksRef.current, { type: "video/webm" });
+      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
 
-    function tryFinish() {
-      if (!aSettled || !bSettled) return;
+      stopStream();
 
-      const audioBlob = new Blob(moduleA.chunksRef.current, { type: "audio/webm" });
-      const videoBlob = new Blob(moduleB.chunksRef.current, { type: "video/webm" });
+      onDone({
+        videoBlob,
+        audioBlob,
+        durationMs: finalDuration,
+        topic,
+      });
+    };
 
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+    recorder.stop();
+  }, [state, stopTimer, stopStream, onDone, topic]);
 
-      onDone({ audioBlob, videoBlob, durationMs, topic });
-    }
-
-    const recA = moduleA.recorderRef.current;
-    const recB = moduleB.recorderRef.current;
-
-    if (recA && recA.state !== "inactive") {
-      recA.onstop = () => { aSettled = true; tryFinish(); };
-      recA.stop();
-    } else {
-      aSettled = true;
-    }
-
-    if (recB && recB.state !== "inactive") {
-      recB.onstop = () => { bSettled = true; tryFinish(); };
-      recB.stop();
-    } else {
-      bSettled = true;
-    }
-
-    tryFinish();
-  }, [state, topic, onDone]);
-
-  if (state === "error_support") {
+  if (state === "error_unsupported") {
     return (
       <ErrorCard
-        title="Browser Not Supported"
+        title="Browser Unsupported"
         message="Your browser doesn't support MediaRecorder. Please try Chrome, Firefox, or Edge."
         onBack={onBack}
       />
@@ -223,32 +173,33 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors bg-slate-900 border border-white/10 px-3 py-1.5 rounded-lg"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-bold hover:text-slate-900 transition-colors bg-white border border-slate-300 px-3.5 py-1.5 rounded-lg shadow-sm cursor-pointer"
             aria-label="Cancel session"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
             <span>Cancel</span>
           </button>
 
-          <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/20">
-            Recording Active
+          <span className="text-xs font-mono font-bold text-rose-700 bg-rose-100 px-3 py-1 rounded border border-rose-300 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+            <span>Recording Active</span>
           </span>
         </div>
 
         {/* Topic Banner */}
-        <div className="bg-[#12141c] rounded-xl p-4 border border-white/10 mb-4">
-          <span className="text-[10px] text-slate-500 uppercase font-mono block mb-1">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4 shadow-sm">
+          <span className="text-[10px] text-slate-500 uppercase font-mono font-bold block mb-1">
             Topic Prompt
           </span>
-          <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-800 font-bold leading-relaxed">
             &quot;{topic}&quot;
           </p>
         </div>
 
         {/* Camera Viewport Container */}
-        <div className="relative rounded-2xl overflow-hidden bg-[#12141c] aspect-video border border-white/10 mb-6">
+        <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-video border border-slate-300 mb-6 shadow-md">
           <video
             ref={videoRef}
             autoPlay
@@ -260,28 +211,28 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
 
           {/* Minimal Status pill */}
           {state === "recording" && (
-            <div className="absolute top-4 left-4 flex items-center gap-2 bg-[#090a0f]/90 border border-white/10 rounded-md px-3 py-1 text-xs font-mono">
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-slate-950/80 border border-slate-700 rounded-md px-3 py-1 text-xs font-mono">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
               <span className="text-white font-bold">{formatDuration(elapsedMs)}</span>
               <span className="text-slate-500">|</span>
-              <span className="text-slate-400">MediaPipe Locked</span>
+              <span className="text-slate-300 font-medium">MediaPipe Locked</span>
             </div>
           )}
 
           {state === "requesting" && (
-            <div className="absolute inset-0 bg-[#090a0f]/90 flex items-center justify-center">
+            <div className="absolute inset-0 bg-slate-950/90 flex items-center justify-center">
               <div className="text-center">
                 <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin mx-auto mb-3" />
-                <p className="text-xs font-medium text-slate-300">Initializing Webcam Feed…</p>
+                <p className="text-xs font-bold text-slate-200">Initializing Webcam Feed…</p>
               </div>
             </div>
           )}
 
           {state === "stopping" && (
-            <div className="absolute inset-0 bg-[#090a0f]/90 flex items-center justify-center">
+            <div className="absolute inset-0 bg-slate-950/90 flex items-center justify-center">
               <div className="text-center">
                 <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin mx-auto mb-3" />
-                <p className="text-xs font-medium text-slate-300">Finalizing Recording…</p>
+                <p className="text-xs font-bold text-slate-200">Finalizing Recording…</p>
               </div>
             </div>
           )}
@@ -293,14 +244,14 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             id="stop-recording-btn"
             onClick={handleStop}
             disabled={state !== "recording"}
-            className={`py-3.5 px-8 rounded-xl font-semibold text-xs transition-all flex items-center gap-2 ${
+            className={`py-3.5 px-8 rounded-xl font-bold text-xs transition-all flex items-center gap-2 shadow-md ${
               state === "recording"
-                ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer"
-                : "bg-slate-800 text-slate-500 border border-white/5 cursor-not-allowed"
+                ? "bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+                : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
             }`}
           >
             <span className="w-2.5 h-2.5 rounded-sm bg-white" />
-            <span>Stop & Analyze Recording</span>
+            <span>Stop &amp; Analyze Recording</span>
           </button>
         </div>
       </div>
@@ -310,13 +261,13 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
 
 function ErrorCard({ title, message, onBack }: { title: string; message: string; onBack: () => void }) {
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 bg-[#090a0f] text-[#f3f4f6]">
-      <div className="max-w-md w-full bg-[#12141c] rounded-2xl border border-white/10 p-6 text-center">
-        <h2 className="text-base font-bold text-white mb-2">{title}</h2>
-        <p className="text-xs text-slate-400 leading-relaxed mb-6">{message}</p>
+    <div className="min-h-screen flex items-center justify-center px-6 bg-[#f8fafc] bg-grid-pattern text-[#0f172a]">
+      <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-lg">
+        <h2 className="text-base font-extrabold text-slate-900 mb-2">{title}</h2>
+        <p className="text-xs text-slate-600 leading-relaxed mb-6 font-medium">{message}</p>
         <button
           onClick={onBack}
-          className="btn-primary w-full py-2.5 rounded-lg text-xs font-semibold"
+          className="btn-primary w-full py-3 rounded-xl text-xs font-bold font-mono tracking-wide uppercase shadow-md cursor-pointer"
         >
           Return to Modules
         </button>
