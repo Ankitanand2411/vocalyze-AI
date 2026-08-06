@@ -425,7 +425,7 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
   }, [result.videoBlob, result.audioBlob]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#090a0f] bg-grid-pattern text-[#f3f4f6]">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#f8fafc] bg-grid-pattern text-[#0f172a]">
       <div className="w-full max-w-3xl">
         {/* Navigation header */}
         <div className="flex items-center justify-between mb-6">

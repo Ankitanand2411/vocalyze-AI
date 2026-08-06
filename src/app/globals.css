@@ -1,17 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  --bg-dark: #090a0f;
-  --surface-dark: #10121a;
-  --surface-card: #151824;
-  --surface-card-header: #0d0e15;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.18);
-  --accent-emerald: #10b981;
-  --text-main: #f3f4f6;
-  --text-sub: #9ca3af;
-  --text-muted: #6b7280;
+  --bg-light: #f8fafc;
+  --surface-white: #ffffff;
+  --surface-subtle: #f1f5f9;
+  --surface-header: #e2e8f0;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(15, 23, 42, 0.18);
+  --accent-emerald: #059669;
+  --text-main: #0f172a;
+  --text-sub: #475569;
+  --text-muted: #64748b;
 }
 
 * {
@@ -20,66 +20,69 @@
 
 html {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  background-color: var(--bg-dark);
+  background-color: var(--bg-light);
   color: var(--text-main);
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #090a0f;
+  background-color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-/* Minimalist Background Grid Pattern — Continuous & Uniform Across Full Height */
+/* Minimalist Light Grid Pattern (Agent 402 Style) */
 .bg-grid-pattern {
+  background-color: #f8fafc;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(to right, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
   background-size: 48px 48px;
   background-position: center top;
 }
 
-/* Structural Bento Card Inset */
+/* Bento Cards - Light Mode */
 .bento-card {
-  background: #131620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 12px;
   overflow: hidden;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .bento-card:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(15, 23, 42, 0.25);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.06);
 }
 
 .bento-card-header {
-  background: #0d0f17;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #f1f5f9;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   padding: 10px 16px;
 }
 
 /* Hairline Grid Accent Lines */
 .hairline-border {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(15, 23, 42, 0.1);
 }
 
-/* Clean minimal primary button */
+/* Clean High-Contrast Primary Button */
 .btn-primary {
-  background: #10b981;
-  color: #090a0f;
-  font-weight: 600;
+  background: #0f172a;
+  color: #ffffff;
+  font-weight: 700;
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .btn-primary:hover {
-  background: #34d399;
+  background: #1e293b;
 }
 
 .btn-primary:active {
-  background: #059669;
+  background: #334155;
 }
 
 /* Keyframes */
@@ -98,12 +101,12 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #090a0f;
+  background: #f8fafc;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2430;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333a4d;
+  background: #94a3b8;
 }
