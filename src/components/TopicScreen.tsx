@@ -51,7 +51,7 @@ export default function TopicScreen({ onStart, onBack }: TopicScreenProps) {
   const progressPct = ((PREP_DURATION - timeLeft) / PREP_DURATION) * 100;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-16 animate-fade-in bg-[#090a0f] text-[#f3f4f6]">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-16 animate-fade-in bg-[#090a0f] bg-grid-pattern text-[#f3f4f6]">
       <div className="w-full max-w-lg">
         {/* Back Button */}
         <button

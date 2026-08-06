@@ -217,7 +217,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#090a0f] text-[#f3f4f6]">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#090a0f] bg-grid-pattern text-[#f3f4f6]">
       <div className="w-full max-w-2xl">
         {/* Top header navigation */}
         <div className="flex items-center justify-between mb-4">
