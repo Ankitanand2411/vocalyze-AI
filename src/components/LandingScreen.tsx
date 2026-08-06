@@ -86,12 +86,9 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#090a0f] bg-grid-pattern relative text-[#f3f4f6]">
-      {/* Background Top Gradient Mask for smooth fade */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#090a0f]/40 via-transparent to-[#090a0f] pointer-events-none" />
-
+    <div className="min-h-screen flex flex-col bg-[#090a0f] bg-grid-pattern text-[#f3f4f6]">
       {/* Top Navbar */}
-      <header className="relative z-10 border-b border-white/10 bg-[#090a0f]/80 backdrop-blur-md px-6 lg:px-12 py-4">
+      <header className="border-b border-white/10 bg-[#090a0f]/90 backdrop-blur-sm px-6 lg:px-12 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           {/* Logo */}
           <div 
@@ -124,7 +121,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
       </header>
 
       {/* Hero Section */}
-      <section className="relative z-10 pt-14 pb-16 px-6 lg:px-12 animate-fade-in">
+      <section className="pt-14 pb-16 px-6 lg:px-12 animate-fade-in">
         <div className="max-w-5xl mx-auto">
           {/* Title Area */}
           <div className="text-center max-w-3xl mx-auto mb-10">
@@ -139,8 +136,8 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
             </p>
           </div>
 
-          {/* Bento Studio Console Workspace - 2-Column Split */}
-          <div className="bento-card bg-[#11131a]/90 backdrop-blur-sm">
+          {/* Bento Studio Console Workspace */}
+          <div className="bento-card bg-[#11131a]/90">
             {/* Console Header Bar */}
             <div className="bento-card-header flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -198,7 +195,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
                   </button>
                 </div>
 
-                {/* Prompt Text Input (No floating overlapping absolute buttons inside) */}
+                {/* Prompt Text Input */}
                 <div>
                   <textarea
                     value={customPrompt}
@@ -270,8 +267,8 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
         </div>
       </section>
 
-      {/* Architectural Telemetry Matrix */}
-      <section id="telemetry" className="relative z-10 py-12 px-6 lg:px-12 border-t border-white/5 bg-[#0d0e14]/90 backdrop-blur-sm">
+      {/* Architectural Telemetry Matrix — Seamless Background Grid */}
+      <section id="telemetry" className="py-12 px-6 lg:px-12 border-t border-white/10 bg-transparent">
         <div className="max-w-5xl mx-auto">
           <div className="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-2">
             02 // PLATFORM TELEMETRY ARCHITECTURE
@@ -282,7 +279,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {TELEMETRY_FEATURES.map((feat) => (
-              <div key={feat.code} className="bento-card">
+              <div key={feat.code} className="bento-card bg-[#11131a]/90">
                 <div className="bento-card-header flex items-center justify-between font-mono text-xs">
                   <span className="text-slate-400">{feat.code}</span>
                   <span className="text-emerald-400 font-bold">{feat.stat}</span>
@@ -298,8 +295,8 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
         </div>
       </section>
 
-      {/* Modules Grid */}
-      <section id="modules" className="relative z-10 py-12 px-6 lg:px-12 border-t border-white/5 bg-[#090a0f]/90 backdrop-blur-sm">
+      {/* Modules Grid — Seamless Background Grid */}
+      <section id="modules" className="py-12 px-6 lg:px-12 border-t border-white/10 bg-transparent">
         <div className="max-w-5xl mx-auto">
           <div className="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-2">
             03 // DIAGNOSTIC FRAMEWORKS
@@ -313,7 +310,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
               <div
                 key={mod.id}
                 onClick={() => mod.active && onSelectImpromptu(customPrompt)}
-                className={`bento-card flex flex-col justify-between ${
+                className={`bento-card bg-[#11131a]/90 flex flex-col justify-between ${
                   mod.active ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
                 }`}
               >
@@ -353,7 +350,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/5 py-6 px-6 lg:px-12 mt-auto text-xs font-mono text-slate-500 bg-[#090a0f]">
+      <footer className="border-t border-white/10 py-6 px-6 lg:px-12 mt-auto text-xs font-mono text-slate-500 bg-[#090a0f]/90 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <span>Vocalyze AI v1.0</span>
           <span>High-Precision Diagnostic Architecture</span>

@@ -33,20 +33,13 @@ body {
   overflow-x: hidden;
 }
 
-/* Minimalist Background Design Patterns */
-
-/* 1. Subtle Engineering Grid Background Pattern (Linear / Vercel style) */
+/* Minimalist Background Grid Pattern — Continuous & Uniform Across Full Height */
 .bg-grid-pattern {
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-/* 2. Micro Dot-Matrix Background Pattern */
-.bg-dot-pattern {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-  background-size: 24px 24px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: center top;
 }
 
 /* Structural Bento Card Inset */
