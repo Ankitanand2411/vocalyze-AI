@@ -20,9 +20,14 @@ export default function Home() {
   const [currentTopic, setCurrentTopic] = useState<string>("");
   const [result, setResult] = useState<RecordingResult | null>(null);
 
-  const handleModuleSelect = () => {
-    setScreen("topic");
-    setCurrentTopic("");
+  const handleModuleSelect = (customTopic?: string) => {
+    if (customTopic && customTopic.trim()) {
+      setCurrentTopic(customTopic);
+      setScreen("recording");
+    } else {
+      setScreen("topic");
+      setCurrentTopic("");
+    }
     setResult(null);
   };
 
@@ -48,7 +53,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-[#07090e] text-[#f8fafc] bg-grid-pattern relative selection:bg-indigo-500/30 selection:text-indigo-200">
       {screen === "landing" && (
         <LandingScreen onSelectImpromptu={handleModuleSelect} />
       )}

@@ -19,11 +19,13 @@ interface TopicScreenProps {
 }
 
 export default function TopicScreen({ onStart, onBack }: TopicScreenProps) {
-  const [topic] = useState(
-    () => TOPICS[Math.floor(Math.random() * TOPICS.length)]
-  );
+  const [topicIndex, setTopicIndex] = useState(() => Math.floor(Math.random() * TOPICS.length));
+  const [customTopic, setCustomTopic] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(PREP_DURATION);
   const [ready, setReady] = useState(false);
+
+  const activeTopic = customTopic ?? TOPICS[topicIndex];
 
   useEffect(() => {
     if (timeLeft <= 0) {
@@ -35,90 +37,115 @@ export default function TopicScreen({ onStart, onBack }: TopicScreenProps) {
   }, [timeLeft]);
 
   const handleStart = useCallback(() => {
-    if (ready) onStart(topic);
-  }, [ready, topic, onStart]);
+    if (ready) onStart(activeTopic);
+  }, [ready, activeTopic, onStart]);
+
+  const handleRandomize = () => {
+    const nextIdx = (topicIndex + 1) % TOPICS.length;
+    setTopicIndex(nextIdx);
+    setCustomTopic(null);
+    setTimeLeft(PREP_DURATION);
+    setReady(false);
+  };
 
   const progressPct = ((PREP_DURATION - timeLeft) / PREP_DURATION) * 100;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-16 animate-fade-in">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-16 animate-fade-in bg-[#090a0f] text-[#f3f4f6]">
       <div className="w-full max-w-lg">
-        {/* Back */}
+        {/* Back Button */}
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-[#9ca3af] hover:text-[#6b7280] transition-colors mb-10 group"
+          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors mb-6"
           aria-label="Back to modules"
         >
-          <svg
-            className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
           </svg>
-          Back to modules
+          <span>Back to Modules</span>
         </button>
 
-        {/* Label */}
-        <p className="text-xs font-medium text-[#6c8ebf] tracking-widest uppercase mb-5">
-          Impromptu Speaker
-        </p>
-
-        {/* Topic card */}
-        <div className="bg-white rounded-2xl border border-[#e5e7eb] p-8 shadow-sm mb-8">
-          <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-4">
-            Your topic
-          </p>
-          <p className="text-xl font-medium text-[#1a1a2e] leading-relaxed">
-            &quot;{topic}&quot;
-          </p>
+        {/* Header Tag */}
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/20">
+            Impromptu Speaker
+          </span>
+          <span className="text-xs text-slate-500">Step 1 of 3</span>
         </div>
 
-        {/* Prep timer */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="text-sm text-[#6b7280]">
-              {ready ? "Prep time complete — you're ready." : "Gather your thoughts…"}
+        {/* Main Topic Card */}
+        <div className="bg-[#12141c] border border-white/10 rounded-2xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-mono">
+              Assigned Topic
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="text-xs text-slate-400 hover:text-white bg-slate-800 px-2.5 py-1 rounded border border-white/10 transition-colors"
+              >
+                {isEditing ? "Done" : "Edit"}
+              </button>
+              <button
+                onClick={handleRandomize}
+                className="text-xs text-slate-400 hover:text-white bg-slate-800 px-2.5 py-1 rounded border border-white/10 transition-colors"
+              >
+                Swap
+              </button>
+            </div>
+          </div>
+
+          {isEditing ? (
+            <textarea
+              value={activeTopic}
+              onChange={(e) => setCustomTopic(e.target.value)}
+              rows={3}
+              className="w-full bg-[#090a0f] border border-emerald-500/40 rounded-xl p-3 text-sm text-white focus:outline-none"
+            />
+          ) : (
+            <p className="text-lg font-medium text-white leading-relaxed">
+              &quot;{activeTopic}&quot;
             </p>
-            <span
-              className={[
-                "text-sm font-semibold tabular-nums transition-colors",
-                ready ? "text-[#6c8ebf]" : "text-[#1a1a2e]",
-              ].join(" ")}
-            >
-              {ready ? "✓" : `${timeLeft}s`}
+          )}
+        </div>
+
+        {/* Prep Timer Card */}
+        <div className="bg-[#161922] border border-white/10 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2 text-xs">
+            <span className="text-slate-400">
+              {ready ? "Preparation complete" : "Gathering thoughts"}
+            </span>
+            <span className={`font-mono font-bold ${ready ? "text-emerald-400" : "text-slate-300"}`}>
+              {ready ? "Ready" : `${timeLeft}s`}
             </span>
           </div>
 
-          {/* Progress bar */}
-          <div className="h-1.5 bg-[#e5e7eb] rounded-full overflow-hidden">
+          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-[#6c8ebf] rounded-full transition-all duration-1000 ease-linear"
+              className="h-full bg-emerald-400 transition-all duration-1000 ease-linear"
               style={{ width: `${progressPct}%` }}
             />
           </div>
         </div>
 
-        {/* Start button */}
+        {/* Start Button */}
         <button
           onClick={handleStart}
           disabled={!ready}
           id="start-answering-btn"
-          className={[
-            "w-full py-3.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200",
+          className={`w-full py-3.5 px-6 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-2 ${
             ready
-              ? "bg-[#6c8ebf] text-white hover:bg-[#5a7aad] shadow-sm hover:shadow-md hover:-translate-y-0.5"
-              : "bg-[#e5e7eb] text-[#9ca3af] cursor-not-allowed",
-          ].join(" ")}
+              ? "btn-primary cursor-pointer"
+              : "bg-slate-800 text-slate-500 border border-white/5 cursor-not-allowed"
+          }`}
         >
-          {ready ? "Start Answering" : `Starting in ${timeLeft}s…`}
+          <span>{ready ? "Start Recording Session" : `Preparing in ${timeLeft}s…`}</span>
+          {ready && (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          )}
         </button>
-
-        <p className="mt-4 text-xs text-center text-[#9ca3af]">
-          Your camera and microphone will be requested when you start.
-        </p>
       </div>
     </div>
   );
