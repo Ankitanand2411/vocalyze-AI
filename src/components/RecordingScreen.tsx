@@ -13,6 +13,7 @@ interface RecordingScreenProps {
 type RecordingState = "requesting" | "countdown" | "recording" | "stopping" | "error_permission" | "error_unsupported";
 
 function formatDuration(ms: number): string {
+  if (!isFinite(ms) || isNaN(ms) || ms < 0) return "--:--";
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

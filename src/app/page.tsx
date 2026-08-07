@@ -58,7 +58,18 @@ export default function Home() {
       setScreen("review");
     };
 
-    videoEl.onloadedmetadata = () => proceedWithResult(Math.round(videoEl.duration * 1000) || 10000);
+    videoEl.onloadedmetadata = () => {
+      if (videoEl.duration === Infinity) {
+        videoEl.currentTime = 1e101;
+        videoEl.ontimeupdate = () => {
+          videoEl.ontimeupdate = null;
+          videoEl.currentTime = 0;
+          proceedWithResult(Math.round(videoEl.duration * 1000) || 10000);
+        };
+      } else {
+        proceedWithResult(Math.round(videoEl.duration * 1000) || 10000);
+      }
+    };
     videoEl.onerror = () => proceedWithResult(10000);
   };
 

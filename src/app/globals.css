@@ -33,14 +33,9 @@ body {
   overflow-x: hidden;
 }
 
-/* Minimalist Light Grid Pattern (Agent 402 Style) */
+/* Clean background for Option A */
 .bg-grid-pattern {
   background-color: #f8fafc;
-  background-image: 
-    linear-gradient(to right, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-position: center top;
 }
 
 /* Bento Cards - Light Mode */

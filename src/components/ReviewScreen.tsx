@@ -14,6 +14,7 @@ interface ReviewScreenProps {
 type AnalysisStatus = "idle" | "running" | "done" | "error";
 
 function formatDuration(ms: number): string {
+  if (!isFinite(ms) || isNaN(ms) || ms < 0) return "--:--";
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   return `${m}m ${s % 60}s`;
@@ -98,6 +99,9 @@ function DebugInspector({
   const avgBlink  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.blinkScore ?? 0), 0) / detectedFrames : 0;
   const avgPitch  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.headPitch ?? 0), 0) / detectedFrames : 0;
   const avgRoll   = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.headRoll ?? 0), 0) / detectedFrames : 0;
+  const avgConfusion = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.confusionScore ?? 0), 0) / detectedFrames : 0;
+  const avgFrown   = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.frownScore ?? 0), 0) / detectedFrames : 0;
+  const avgSquint  = detectedFrames > 0 ? frameAnalysis.filter((f) => f.faceDetected).reduce((s, f) => s + (f.squintScore ?? 0), 0) / detectedFrames : 0;
 
   const summaryJson = {
     mediapipeReady,
@@ -216,26 +220,26 @@ function DebugInspector({
   };
 
   return (
-    <div className="mt-8 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+    <div className="mt-8 border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"
+        className="w-full flex items-center justify-between px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-100"
         aria-expanded={open}
       >
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-bold text-slate-800 font-mono">Debug &amp; Telemetry Inspector</span>
+          <span className="text-xs font-bold text-slate-800 font-mono tracking-wider uppercase">Telemetry & Debug Inspector</span>
           {frameAnalysis.length > 0 && (
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border font-bold ${
               sanity.passed === sanity.total
-                ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                : "bg-amber-100 text-amber-800 border-amber-300"
+                ? "bg-teal-50 text-teal-700 border-teal-200"
+                : "bg-amber-50 text-amber-700 border-amber-200"
             }`}>
-              {sanity.passed}/{sanity.total} Checks Passed
+              {sanity.passed}/{sanity.total} Passed
             </span>
           )}
         </div>
         <svg
-          className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -245,10 +249,26 @@ function DebugInspector({
       {open && (
         <div className="px-5 pb-6 pt-5 bg-white space-y-6">
           {frameAnalysis.length === 0 && (
-            <div className="text-xs text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
+            <div className="text-xs text-slate-500 bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
               No movement telemetry yet. Click &quot;Analyze Recording&quot; above to run MediaPipe analysis.
             </div>
           )}
+
+          <div>
+            <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-3">
+              Diagnostic Metrics
+            </p>
+            <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+              <StatRow label="Mouth Open" value={`${Math.round(avgMouth * 100)}%`} />
+              <StatRow label="Smile" value={`${Math.round(avgSmile * 100)}%`} />
+              <StatRow label="Blink Rate" value={`${Math.round(avgBlink * 100)}%`} />
+              <StatRow label="Head Pitch" value={`${avgPitch.toFixed(1)}°`} />
+              <StatRow label="Head Roll" value={`${avgRoll.toFixed(1)}°`} />
+              <StatRow label="Confusion" value={`${Math.round(avgConfusion * 100)}%`} />
+              <StatRow label="Frown" value={`${Math.round(avgFrown * 100)}%`} />
+              <StatRow label="Squint" value={`${Math.round(avgSquint * 100)}%`} />
+            </div>
+          </div>
 
           <div>
             <p className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider mb-3">
@@ -424,11 +444,11 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
     <div className="min-h-screen animate-fade-in bg-[#f8fafc] bg-grid-pattern text-[#0f172a] px-4 sm:px-8 py-8">
       <div className="max-w-[1440px] mx-auto space-y-6">
         {/* Navigation header */}
-        <div className="flex items-center justify-between bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-bold hover:text-slate-900 transition-colors bg-slate-50 hover:bg-slate-100 border border-slate-300 px-3.5 py-2 rounded-xl shadow-sm cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-bold hover:text-slate-900 transition-colors bg-white hover:bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl cursor-pointer"
               aria-label="Back to modules"
             >
               <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -448,10 +468,10 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
 
         {/* Main 2-Column Split Workspace */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column (Video + Telemetry, Sticky on Desktop) */}
+          {/* Left Column (Video + Telemetry, lg:col-span-5) */}
           <div className="lg:col-span-5 lg:sticky lg:top-6 space-y-6">
             {/* Video Player Container */}
-            <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video border border-slate-300 shadow-md relative group">
+            <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video shadow-md relative group">
               {videoUrl && (
                 <video
                   ref={videoRef}
@@ -471,24 +491,16 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
               <InfoTile label="Audio Stream" value={formatFileSize(result.audioBlob.size)} />
             </div>
 
-            {/* Topic Card */}
-            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1">
-                Prompt
-              </span>
-              <p className="text-xs sm:text-sm text-slate-800 font-bold leading-relaxed">&quot;{result.topic}&quot;</p>
-            </div>
-
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 id="analyze-btn"
                 onClick={handleAnalyze}
                 disabled={analysisStatus === "running"}
-                className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 ${
+                className={`flex-1 py-3 px-6 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 ${
                   analysisStatus === "running"
-                    ? "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
-                    : "btn-primary cursor-pointer shadow-md"
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                    : "bg-teal-600 hover:bg-teal-700 text-white shadow-sm cursor-pointer"
                 }`}
               >
                 <span>
@@ -502,7 +514,7 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
               <button
                 id="retry-btn"
                 onClick={onRetry}
-                className="py-3.5 px-6 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+                className="py-3 px-6 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
               >
                 Try Again
               </button>
@@ -510,9 +522,9 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
 
             {analysisStatus === "running" && (
               <div className="mt-4">
-                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-600 transition-all duration-200 linear"
+                    className="h-full bg-teal-500 transition-all duration-200 linear"
                     style={{ width: `${analysisProgress}%` }}
                   />
                 </div>
@@ -523,14 +535,38 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
               <p className="mt-4 text-xs text-rose-600 text-center font-bold">{analysisError}</p>
             )}
 
-            {/* MediaPipe On-Device Telemetry Panel */}
+            {/* MediaPipe On-Device Telemetry Panel (Moved to Left Column) */}
             {mediapipeReady && frameAnalysis.length > 0 && (
-              <ScorePanel frameAnalysis={frameAnalysis} />
+              <ScoredTelemetryPanel frameAnalysis={frameAnalysis} />
             )}
+
+            <DebugInspector
+              audioBlob={result.audioBlob}
+              videoBlob={result.videoBlob}
+              frameAnalysis={frameAnalysis}
+              mediapipeReady={mediapipeReady}
+            />
           </div>
 
-          {/* Right Column (Full Diagnostic & AI Coaching Report) */}
+          {/* Right Column (Diagnostic Report & Telemetry, lg:col-span-7) */}
           <div className="lg:col-span-7 space-y-6">
+            {/* Transcript (Moved to Right Column, top) */}
+            {backendReport?.transcript && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-teal-500" />
+                  <span className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                    Video Transcript
+                  </span>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-sm text-slate-800 leading-relaxed font-medium break-words whitespace-pre-wrap">
+                    {backendReport.transcript}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <BackendReport
               status={backendStatus}
               report={backendReport}
@@ -542,13 +578,6 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
                   videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
               }}
-            />
-
-            <DebugInspector
-              audioBlob={result.audioBlob}
-              videoBlob={result.videoBlob}
-              frameAnalysis={frameAnalysis}
-              mediapipeReady={mediapipeReady}
             />
           </div>
         </div>
@@ -688,479 +717,226 @@ function BackendReport({
     score_ranges,
   } = report;
 
+  const eyePct = insights?.audience_connection_pct ?? 0;
+  const eyeLabel = getEyeContactLabel(eyePct);
+  const eyeColor = getStatusColor(eyeLabel);
+
   return (
-    <div className="mt-6 space-y-6">
-      {/* Transcript Section */}
-      {transcript && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-slate-800" />
-            <span className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-              Whisper Transcript
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+      <div className="text-center pb-2 border-b border-slate-100">
+        <h2 className="text-xl font-bold text-slate-900 mb-6">Rehearsal Insights</h2>
+        
+        {/* Overall Score Circle */}
+        <div className="relative w-32 h-32 mx-auto mb-3">
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+            {/* Background track */}
+            <circle cx="50" cy="50" r="40" stroke="#ccfbf1" strokeWidth="8" fill="none" />
+            {/* Progress track */}
+            <circle 
+              cx="50" cy="50" r="40" 
+              stroke="#14b8a6" 
+              strokeWidth="8" 
+              fill="none" 
+              strokeDasharray="251.2" 
+              strokeDashoffset={251.2 - (251.2 * (overall_score / 100))}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-4xl font-bold text-white bg-teal-500 rounded-full w-24 h-24 flex items-center justify-center">
+              {Math.round(overall_score)}
             </span>
           </div>
-          <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200">
-            <p className="text-xs sm:text-sm text-slate-800 leading-relaxed italic font-medium break-words whitespace-pre-wrap">
-              &quot;{transcript}&quot;
-            </p>
+        </div>
+        <h3 className="text-lg font-bold text-slate-800">Overall Score</h3>
+      </div>
+
+      {/* Bento Metric Cards */}
+      <div className="space-y-3">
+        {/* Pacing */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+            <svg className="w-6 h-6 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Pacing</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{acoustic_stats?.wpm.toFixed(0) || 0} WPM</span>
+              <span className="text-slate-400">-</span>
+              <span className="text-teal-600 font-bold">{insights?.pacing_status || "Optimal"}</span>
+            </div>
+          </div>
+          <div className="shrink-0 flex items-end gap-1 h-8">
+            <div className="w-1.5 bg-teal-200 h-1/3 rounded-t"></div>
+            <div className="w-1.5 bg-teal-300 h-2/3 rounded-t"></div>
+            <div className="w-1.5 bg-teal-400 h-full rounded-t"></div>
+            <div className="w-1.5 bg-teal-500 h-4/5 rounded-t"></div>
+            <div className="w-1.5 bg-teal-600 h-2/3 rounded-t"></div>
+          </div>
+        </div>
+
+        {/* Filler Words */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+            <svg className="w-6 h-6 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Filler Words</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">
+                {linguistic_stats?.filler_words_found?.length || 0} words{linguistic_stats?.filler_words_found?.length ? `: '${linguistic_stats.filler_words_found.slice(0, 2).join("', '")}'` : ""}
+              </span>
+              <span className="text-slate-400">-</span>
+              <span className="text-teal-600 font-bold">{insights?.filler_severity || "Good"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Eye Contact */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className={`w-12 h-12 rounded-full bg-${eyeColor}-50 flex items-center justify-center shrink-0`}>
+            <svg className={`w-6 h-6 text-${eyeColor}-600`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Eye Contact</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{eyePct.toFixed(0)}% Engagement</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${eyeColor}-600 font-bold`}>{eyeLabel}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Coaching Insights */}
+      <div className="bg-[#fef3c7] rounded-2xl p-5 border border-amber-200 shadow-sm mt-4">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-full bg-[#fde68a] flex items-center justify-center shrink-0 shadow-sm">
+            <span className="text-xl">💡</span>
+          </div>
+          <div>
+            <h4 className="text-[17px] font-bold text-slate-900">AI Coaching Insights</h4>
+          </div>
+        </div>
+        
+        <div className="space-y-4 text-[15px] text-slate-800 font-medium leading-relaxed">
+          {llmReport?.improvement_plan ? (
+            llmReport.improvement_plan.slice(0, 3).map((plan: string, idx: number) => (
+              <p key={idx}>{plan}</p>
+            ))
+          ) : (
+            <>
+              <p>Focus on eye contact during the first 30 seconds to engage the audience immediately.</p>
+              <p>Reduce filler words like &apos;uh&apos; in minutes 1-2.</p>
+              <p>Try slowing down slightly when introducing key product features for better emphasis.</p>
+            </>
+          )}
+        </div>
+
+        <button 
+          onClick={() => setActiveTab("ai_feedbacks")}
+          className="w-full mt-6 py-3 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 text-[15px] shadow-sm hover:bg-slate-50 transition-colors"
+        >
+          Review Feedback Points
+        </button>
+      </div>
+
+      {/* Render detailed AI feedbacks if tab is active (could be in a modal or just appended below) */}
+      {activeTab === "ai_feedbacks" && llmReport && (
+        <div className="mt-8 p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-bold text-slate-900">Detailed Coaching Report</h4>
+            <button onClick={() => setActiveTab("mandatory")} className="text-slate-400 hover:text-slate-700">✕</button>
+          </div>
+          
+          <div className="space-y-6">
+            {llmReport.corrections?.length > 0 && (
+              <div>
+                <h5 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Phrasing Refinements</h5>
+                <div className="space-y-3">
+                  {llmReport.corrections.map((corr: any, idx: number) => (
+                    <div key={idx} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                      <div className="mb-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Before</span>
+                        <p className="text-slate-700 italic text-sm">&quot;{corr.before}&quot;</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-teal-600 uppercase">After</span>
+                        <p className="text-teal-900 font-semibold text-sm">&quot;{corr.after}&quot;</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {llmReport.coach_final_note && (
+              <div className="bg-slate-900 rounded-xl p-5 text-white">
+                <h5 className="text-[11px] font-bold text-teal-400 uppercase tracking-wider mb-2">Coach&apos;s Note</h5>
+                <p className="text-sm italic font-medium leading-relaxed">{llmReport.coach_final_note}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
-
-      {/* Backend Coaching Report Header */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                Diagnostic Coaching Report
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium">
-              {frame_count} frames · {face_detected_pct.toFixed(0)}% face detected · {(audio_received_bytes / 1024).toFixed(1)} KB audio
-            </p>
-          </div>
-          <ScoreCircle score={overall_score} />
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 font-mono text-xs font-bold">
-          <button
-            onClick={() => setActiveTab("mandatory")}
-            className={`flex-1 py-2 rounded-lg transition-all cursor-pointer ${
-              activeTab === "mandatory"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            MANDATORY INSIGHTS
-          </button>
-          <button
-            onClick={() => setActiveTab("ai_feedbacks")}
-            className={`flex-1 py-2 rounded-lg transition-all cursor-pointer ${
-              activeTab === "ai_feedbacks"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            AI FEEDBACKS
-          </button>
-        </div>
-
-        {/* TAB 1: MANDATORY INSIGHTS */}
-        {activeTab === "mandatory" && (
-          <div className="space-y-6">
-            {/* AI Coaching Analysis Summary */}
-            <div className="bg-slate-50/70 rounded-xl p-5 border border-slate-200 relative overflow-hidden">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-                  Diagnostic Summary
-                </span>
-              </div>
-              <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-700 font-mono font-bold text-xs">
-                    AI
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">
-                      {llmReport ? "LLM Analysis Complete" : "Delivery Overview"}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      Based on visual, acoustic, and linguistic delivery metrics.
-                    </p>
-                  </div>
-                </div>
-                <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-700 font-medium">
-                  <div className="flex items-start gap-2">
-                    <span className="text-slate-400 font-bold">•</span>
-                    <span>Solid foundation — composite score {overall_score.toFixed(1)}/100.</span>
-                  </div>
-                  {acoustic_stats && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-slate-400 font-bold">•</span>
-                      <span>
-                        Pace was {insights?.pacing_status.toLowerCase() || "measured"} ({acoustic_stats.wpm.toFixed(0)} wpm) — target 110–150 wpm for optimal conversational cadence.
-                      </span>
-                    </div>
-                  )}
-                  {linguistic_stats && linguistic_stats.run_on_sentences > 0 && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-slate-400 font-bold">•</span>
-                      <span>{linguistic_stats.run_on_sentences} run-on sentence(s) detected (40+ words without punctuation breaks).</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Speaker Insights */}
-            {insights && (
-              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                    Speaker Metrics
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <InfoTile label="Pacing" value={insights.pacing_status} />
-                  <InfoTile label="Vocal Variety" value={insights.vocal_variety} />
-                  <InfoTile label="Audience Connection" value={`${insights.audience_connection_pct.toFixed(0)}%`} />
-                  <InfoTile label="Warmth" value={insights.warmth_index} />
-                  <InfoTile label="Presence" value={insights.fidget_index} />
-                  <InfoTile label="Fillers" value={insights.filler_severity} />
-                </div>
-                <p className="text-[10px] text-slate-500 font-mono italic">
-                  * Silence ratio: {insights.silence_ratio_pct}%.
-                </p>
-              </div>
-            )}
-
-            {/* Speaking Stats */}
-            {acoustic_stats && (
-              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                    Acoustic Stats
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Words Per Minute</span>
-                    <span className="text-sm font-black font-mono text-slate-900">{acoustic_stats.wpm.toFixed(0)}</span>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Filler Words Ratio</span>
-                    <span className="text-sm font-black font-mono text-slate-900">{((acoustic_stats.filler_word_ratio || 0) * 100).toFixed(1)}%</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Language & Vocabulary */}
-            {linguistic_stats && (
-              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                    Language &amp; Vocabulary
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Weak Words</span>
-                    <span className="text-sm font-black font-mono text-slate-900">{linguistic_stats.weak_words_count}</span>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Run-on Sentences (&gt;40 words)</span>
-                    <span className="text-sm font-black font-mono text-slate-900">{linguistic_stats.run_on_sentences}</span>
-                  </div>
-                </div>
-
-                {/* Filler Words Chips */}
-                {linguistic_stats.filler_words_found && linguistic_stats.filler_words_found.length > 0 && (
-                  <div>
-                    <span className="text-[11px] text-slate-500 font-bold block mb-2 font-mono uppercase">Filler Words Detected</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {linguistic_stats.filler_words_found.map((w, i) => (
-                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-md bg-white text-slate-800 border border-slate-300 shadow-2xs">
-                          {w}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Top Repeated Words Chips */}
-                {linguistic_stats.top_repeated_words && linguistic_stats.top_repeated_words.length > 0 && (
-                  <div>
-                    <span className="text-[11px] text-slate-500 font-bold block mb-2 font-mono uppercase">Top Repeated Words</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {linguistic_stats.top_repeated_words.map((w, i) => (
-                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-md bg-white text-slate-800 border border-slate-300 shadow-2xs">
-                          {w}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Detected Events */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-                  Detected Telemetry Events ({detected_events.length})
-                </span>
-              </div>
-
-              {detected_events.length === 0 ? (
-                <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
-                  No notable events detected.
-                </p>
-              ) : (
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-slate-600 bg-slate-50 uppercase font-mono text-[9px] border-b border-slate-200">
-                        <th className="px-3 py-2.5 text-left font-bold">TYPE</th>
-                        <th className="px-3 py-2.5 text-right font-bold">START</th>
-                        <th className="px-3 py-2.5 text-right font-bold">END</th>
-                        <th className="px-3 py-2.5 text-right font-bold">DURATION</th>
-                        <th className="px-3 py-2.5 text-right font-bold">PEAK</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detected_events.map((ev, i) => (
-                        <tr
-                          key={i}
-                          onClick={() => onSeek?.(ev.start_ms)}
-                          className="border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
-                        >
-                          <td className="px-3 py-2 text-slate-800 font-bold">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 border border-slate-300 text-slate-700 inline-block">
-                              {ev.type.replace(/_/g, " ")}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-600 font-semibold">{(ev.start_ms / 1000).toFixed(2)}s</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-600 font-semibold">{(ev.end_ms / 1000).toFixed(2)}s</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-800 font-bold">{ev.duration_ms.toFixed(0)}ms</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-500">{ev.peak_value ? ev.peak_value.toFixed(2) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Threshold Tuning Collapsible */}
-            {score_ranges && (
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                <button
-                  onClick={() => setShowRawRanges((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-xs font-mono font-bold text-slate-700"
-                >
-                  <span>RAW SCORE RANGES (THRESHOLD TUNING)</span>
-                  <span>{showRawRanges ? "▲" : "▼"}</span>
-                </button>
-                {showRawRanges && (
-                  <div className="p-4 bg-slate-50 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                    <div className="bg-white p-2.5 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-bold">Eye Contact</span>
-                      <span>min: {score_ranges.eye_contact_min.toFixed(2)}</span><br />
-                      <span>max: {score_ranges.eye_contact_max.toFixed(2)}</span><br />
-                      <span>avg: {score_ranges.eye_contact_avg.toFixed(2)}</span>
-                    </div>
-                    <div className="bg-white p-2.5 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-bold">Anxiety</span>
-                      <span>min: {score_ranges.anxiety_min.toFixed(2)}</span><br />
-                      <span>max: {score_ranges.anxiety_max.toFixed(2)}</span><br />
-                      <span>avg: {score_ranges.anxiety_avg.toFixed(2)}</span>
-                    </div>
-                    <div className="bg-white p-2.5 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-bold">Stress</span>
-                      <span>min: {score_ranges.stress_min.toFixed(2)}</span><br />
-                      <span>max: {score_ranges.stress_max.toFixed(2)}</span><br />
-                      <span>avg: {score_ranges.stress_avg.toFixed(2)}</span>
-                    </div>
-                    <div className="bg-white p-2.5 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-bold">Smile</span>
-                      <span>min: {score_ranges.smile_min.toFixed(2)}</span><br />
-                      <span>max: {score_ranges.smile_max.toFixed(2)}</span><br />
-                      <span>avg: {score_ranges.smile_avg.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 2: AI FEEDBACKS (LLM Coaching Report) */}
-        {activeTab === "ai_feedbacks" && (
-          <div className="space-y-6">
-            {llmLoading && (
-              <div className="bg-slate-50 rounded-xl p-6 text-center border border-slate-200 space-y-3">
-                <div className="w-5 h-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin mx-auto" />
-                <p className="text-xs font-mono font-bold text-slate-700 uppercase">
-                  Generating Diagnostic AI Coaching Feedback...
-                </p>
-                <p className="text-xs text-slate-500 font-medium">
-                  Analyzing sentence structure, vocabulary impact, and moment annotations.
-                </p>
-              </div>
-            )}
-
-            {llmError && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-center">
-                <p className="text-xs font-bold text-rose-700 font-mono uppercase">LLM Analysis Status</p>
-                <p className="text-xs text-rose-600 mt-1">{llmError}</p>
-              </div>
-            )}
-
-            {llmReport && (
-              <div className="space-y-6">
-                {/* 1. Coach's Assessment & Final Note (Top) */}
-                <div className="space-y-4">
-                  {llmReport.overall_assessment && (
-                    <div className="bg-slate-50/70 rounded-xl border border-slate-200 p-5 space-y-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                          Overall Assessment
-                        </span>
-                      </div>
-                      <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
-                        {llmReport.overall_assessment}
-                      </p>
-                    </div>
-                  )}
-
-                  {llmReport.coach_final_note && (
-                    <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800 space-y-2 shadow-sm">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
-                          Coach Final Recommendation
-                        </span>
-                      </div>
-                      <p className="text-xs sm:text-sm text-slate-100 italic font-medium leading-relaxed">
-                        &quot;{llmReport.coach_final_note}&quot;
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Structural & Body Language Analysis */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {llmReport.structural_analysis && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
-                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                        Structural Analysis
-                      </span>
-                      <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                        {llmReport.structural_analysis}
-                      </p>
-                    </div>
-                  )}
-                  {llmReport.body_language_analysis && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
-                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                        Body Language Analysis
-                      </span>
-                      <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                        {llmReport.body_language_analysis}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Strengths & Gaps & Improvement Plan */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {llmReport.strengths && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
-                      <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase block">
-                        Key Strengths
-                      </span>
-                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                        {llmReport.strengths.map((s: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-emerald-600 font-bold">•</span>
-                            <span>{s}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {llmReport.gap_analysis && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
-                      <span className="text-[11px] font-mono font-bold text-amber-800 uppercase block">
-                        Growth Areas
-                      </span>
-                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                        {llmReport.gap_analysis.map((g: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-amber-600 font-bold">•</span>
-                            <span>{g}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {llmReport.improvement_plan && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
-                      <span className="text-[11px] font-mono font-bold text-slate-800 uppercase block">
-                        Improvement Plan
-                      </span>
-                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                        {llmReport.improvement_plan.map((p: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="font-mono font-bold text-slate-900">{i + 1}.</span>
-                            <span>{p}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. Detailed Corrections (Before / After / Why) */}
-                {llmReport.corrections && llmReport.corrections.length > 0 && (
-                  <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-5 space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                        Phrasing &amp; Delivery Refinements
-                      </span>
-                    </div>
-
-                    <div className="space-y-4">
-                      {llmReport.corrections.map((corr: any, idx: number) => (
-                        <div key={idx} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
-                          <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
-                            {corr.category}
-                          </span>
-
-                          <div className="space-y-2 text-xs">
-                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1">BEFORE</span>
-                              <p className="text-slate-800 italic font-medium">&quot;{corr.before}&quot;</p>
-                            </div>
-
-                            <div className="bg-emerald-50/50 border border-emerald-200/70 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-emerald-800 uppercase block mb-1">AFTER</span>
-                              <p className="text-emerald-950 font-semibold">&quot;{corr.after}&quot;</p>
-                            </div>
-
-                            <div className="pt-1">
-                              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block mb-0.5">WHY</span>
-                              <p className="text-slate-600 font-medium">{corr.why}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!llmLoading && !llmReport && !llmError && (
-              <div className="bg-slate-50 rounded-xl p-6 text-center border border-slate-200">
-                <p className="text-xs font-mono font-bold text-slate-600">
-                  AI LLM Feedback will appear automatically once background analysis completes.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
 // ─── Score Panel (MediaPipe Telemetry & Emotion Signals) ──────────────────────
+
+export type StatusLevel = "Excellent" | "Good" | "Needs Work";
+export type StatusColor = "teal" | "amber" | "rose";
+
+export function getStatusColor(status: StatusLevel): StatusColor {
+  if (status === "Excellent") return "teal";
+  if (status === "Good") return "amber";
+  return "rose";
+}
+
+export function getEyeContactLabel(pct: number): StatusLevel {
+  if (pct >= 70) return "Excellent";
+  if (pct >= 45) return "Good";
+  return "Needs Work";
+}
+
+export function getGazeZoneLabel(pct: number): StatusLevel {
+  if (pct >= 60) return "Excellent";
+  if (pct >= 40) return "Good";
+  return "Needs Work";
+}
+
+export function getAnxietyLabel(pct: number): StatusLevel {
+  if (pct < 15) return "Excellent";
+  if (pct <= 40) return "Good";
+  return "Needs Work";
+}
+
+export function getStressLabel(pct: number): StatusLevel {
+  if (pct < 15) return "Excellent";
+  if (pct <= 40) return "Good";
+  return "Needs Work";
+}
+
+export function getHeadPoseLabel(yawDeg: number): StatusLevel {
+  const absYaw = Math.abs(yawDeg);
+  if (absYaw <= 10) return "Excellent";
+  if (absYaw <= 20) return "Good";
+  return "Needs Work";
+}
+
+export function getHeadPoseText(yawDeg: number): string {
+  if (yawDeg > 10) return "Looking Left";
+  if (yawDeg < -10) return "Looking Right";
+  return "Centered";
+}
 
 function ScoreBar({ label, value, unit = "%", invert = false }: {
   label: string; value: number; unit?: string; invert?: boolean;
@@ -1184,105 +960,139 @@ function ScoreBar({ label, value, unit = "%", invert = false }: {
   );
 }
 
-function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) {
+// ─── Scored Telemetry Panel ──────────────────────────────────────────────────
+
+function ScoredTelemetryPanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) {
   const detected = frameAnalysis.filter((f) => f.faceDetected);
   if (detected.length === 0) return null;
   const avg = (key: keyof FrameAnalysisEntry) =>
     detected.reduce((s, f) => s + ((f[key] as number) ?? 0), 0) / detected.length;
 
-  const eyeContact = avg("eyeContactScore");
+  const eyeContact = avg("eyeContactScore") * 100;
   const headPose   = avg("headPoseScore");
-  const mouthOpen  = avg("mouthOpenScore");
-  const smile      = avg("smileScore");
-  const blink      = avg("blinkScore");
-  const pitch      = avg("headPitch");
-  const roll       = avg("headRoll");
+  const anxiety    = avg("anxietyScore") * 100;
+  const stress     = avg("stressScore") * 100;
 
-  const anxiety    = avg("anxietyScore");
-  const confusion  = avg("confusionScore");
-  const stress     = avg("stressScore");
-  const frown      = avg("frownScore");
-  const squint     = avg("squintScore");
-
-  // Gaze zones
   const total = detected.length;
-  const centerPct = Math.round((detected.filter((f) => f.gazeZone === "center").length / total) * 100);
-  const leftPct   = Math.round((detected.filter((f) => f.gazeZone === "left").length / total) * 100);
-  const rightPct  = Math.round((detected.filter((f) => f.gazeZone === "right").length / total) * 100);
-  const downPct   = Math.round((detected.filter((f) => f.gazeZone === "down").length / total) * 100);
-  const awayPct   = Math.round((detected.filter((f) => f.gazeZone === "away").length / total) * 100);
+  const gazeCenter = Math.round((detected.filter((f) => f.gazeZone === "center").length / total) * 100);
+
+  const eyeLabel = getEyeContactLabel(eyeContact);
+  const eyeColor = getStatusColor(eyeLabel);
+  
+  const gazeLabel = getGazeZoneLabel(gazeCenter);
+  const gazeColor = getStatusColor(gazeLabel);
+  
+  const anxietyLabel = getAnxietyLabel(anxiety);
+  const anxietyColor = getStatusColor(anxietyLabel);
+  
+  const stressLabel = getStressLabel(stress);
+  const stressColor = getStatusColor(stressLabel);
+  
+  const headLabel = getHeadPoseLabel(headPose);
+  const headColor = getStatusColor(headLabel);
+  const headText = getHeadPoseText(headPose);
+
+  // Directional dot mapping for yaw (-30 to +30 degrees)
+  const dotX = Math.max(0, Math.min(100, 50 + (headPose / 30) * 50));
 
   return (
     <div className="mt-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-      {/* Face & Head Section */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-            FACE &amp; HEAD TELEMETRY
-          </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-          <ScoreBar label="Eye Contact"           value={eyeContact} />
-          <ScoreBar label="Head Pose (Yaw)"       value={headPose} />
-          <ScoreBar label="Mouth Open (Speaking)" value={mouthOpen} />
-          <ScoreBar label="Smile"                 value={smile} />
-          <ScoreBar label="Blink Rate"            value={blink} invert />
-          <ScoreBar label="Head Pitch"            value={pitch} unit="°" />
-          <ScoreBar label="Head Roll"             value={roll}  unit="°" />
-        </div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
+          SCORED TELEMETRY
+        </span>
       </div>
 
-      {/* Gaze Zone Distribution */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-            GAZE ZONE DISTRIBUTION
-          </span>
-        </div>
-        <div className="grid grid-cols-5 gap-2 text-center">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-[9px] text-slate-600 font-bold uppercase block">CENTER</span>
-            <span className="text-base font-black font-mono text-slate-900">{centerPct}%</span>
+      <div className="space-y-3">
+        {/* Eye Contact */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className={`w-12 h-12 rounded-full bg-${eyeColor}-50 flex items-center justify-center shrink-0`}>
+            <svg className={`w-6 h-6 text-${eyeColor}-600`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
           </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-[9px] text-slate-600 font-bold uppercase block">LEFT</span>
-            <span className="text-base font-black font-mono text-slate-800">{leftPct}%</span>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-[9px] text-slate-600 font-bold uppercase block">RIGHT</span>
-            <span className="text-base font-black font-mono text-slate-800">{rightPct}%</span>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-[9px] text-slate-600 font-bold uppercase block">DOWN</span>
-            <span className="text-base font-black font-mono text-slate-800">{downPct}%</span>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-[9px] text-slate-600 font-bold uppercase block">AWAY</span>
-            <span className="text-base font-black font-mono text-slate-800">{awayPct}%</span>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Eye Contact</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{Math.round(eyeContact)}%</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${eyeColor}-600 font-bold`}>{eyeLabel}</span>
+            </div>
           </div>
         </div>
-        <p className="text-[10px] text-slate-500 font-medium mt-2">
-          Center &gt; 50% is ideal — indicates steady camera focus.
-        </p>
-      </div>
 
-      {/* Emotion Signals */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-            EMOTION SIGNALS
-          </span>
+        {/* Gaze Center % */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className={`w-12 h-12 rounded-full bg-${gazeColor}-50 flex items-center justify-center shrink-0`}>
+            <svg className={`w-6 h-6 text-${gazeColor}-600`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Gaze Zone (Center)</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{gazeCenter}%</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${gazeColor}-600 font-bold`}>{gazeLabel}</span>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-          <ScoreBar label="Anxiety (brow raise)"    value={anxiety}   invert />
-          <ScoreBar label="Confusion (brow furrow)" value={confusion} invert />
-          <ScoreBar label="Stress (lip press)"      value={stress}    invert />
-          <ScoreBar label="Frown"                   value={frown}     invert />
-          <ScoreBar label="Squint (eye strain)"     value={squint}    invert />
+
+        {/* Anxiety */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className={`w-12 h-12 rounded-full bg-${anxietyColor}-50 flex items-center justify-center shrink-0`}>
+            <svg className={`w-6 h-6 text-${anxietyColor}-600`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Anxiety Signal</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{Math.round(anxiety)}%</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${anxietyColor}-600 font-bold`}>{anxietyLabel}</span>
+            </div>
+          </div>
         </div>
-        <p className="text-[10px] text-slate-500 font-medium mt-3">
-          Lower is better — these signals reflect vocal and facial tension.
-        </p>
+
+        {/* Stress */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className={`w-12 h-12 rounded-full bg-${stressColor}-50 flex items-center justify-center shrink-0`}>
+            <svg className={`w-6 h-6 text-${stressColor}-600`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Stress Signal</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{Math.round(stress)}%</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${stressColor}-600 font-bold`}>{stressLabel}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Head Pose Yaw */}
+        <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className={`w-12 h-12 rounded-full bg-${headColor}-50 flex items-center justify-center shrink-0`}>
+            <div className="relative w-6 h-6 border-2 border-slate-300 rounded-full">
+              <div 
+                className={`absolute w-2 h-2 rounded-full bg-${headColor}-600`} 
+                style={{ top: "50%", left: `${dotX}%`, transform: "translate(-50%, -50%)" }}
+              />
+            </div>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[15px] font-bold text-slate-900 mb-0.5">Head Pose (Yaw)</h4>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-slate-600 font-medium">{Math.abs(headPose).toFixed(1)}°</span>
+              <span className="text-slate-400">-</span>
+              <span className={`text-${headColor}-600 font-bold`}>{headText}</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Upper Body posture note */}
