@@ -694,12 +694,12 @@ function BackendReport({
       {transcript && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-base">🎙️</span>
+            <span className="w-2 h-2 rounded-full bg-slate-800" />
             <span className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider">
               Whisper Transcript
             </span>
           </div>
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+          <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200">
             <p className="text-xs sm:text-sm text-slate-800 leading-relaxed italic font-medium break-words whitespace-pre-wrap">
               &quot;{transcript}&quot;
             </p>
@@ -712,9 +712,8 @@ function BackendReport({
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-base">🤖</span>
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                Backend Coaching Report
+                Diagnostic Coaching Report
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
@@ -752,44 +751,43 @@ function BackendReport({
         {activeTab === "mandatory" && (
           <div className="space-y-6">
             {/* AI Coaching Analysis Summary */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 relative overflow-hidden">
+            <div className="bg-slate-50/70 rounded-xl p-5 border border-slate-200 relative overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-base">💡</span>
                 <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-                  AI Coaching Analysis
+                  Diagnostic Summary
                 </span>
               </div>
               <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-2">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-black text-sm">
-                    🤖
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-700 font-mono font-bold text-xs">
+                    AI
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-slate-900">
-                      {llmReport ? "LLM Coaching Analysis Complete" : "Diagnostic Summary"}
+                      {llmReport ? "LLM Analysis Complete" : "Delivery Overview"}
                     </h4>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      Based on your visual, acoustic, and linguistic delivery metrics.
+                      Based on visual, acoustic, and linguistic delivery metrics.
                     </p>
                   </div>
                 </div>
-                <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-700 font-medium">
+                <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-700 font-medium">
                   <div className="flex items-start gap-2">
-                    <span className="text-emerald-600 font-bold">📈</span>
-                    <span>Solid foundation — composite score {overall_score.toFixed(1)}/100. Focus on areas below to level up.</span>
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Solid foundation — composite score {overall_score.toFixed(1)}/100.</span>
                   </div>
                   {acoustic_stats && (
                     <div className="flex items-start gap-2">
-                      <span className="text-emerald-600 font-bold">📢</span>
+                      <span className="text-slate-400 font-bold">•</span>
                       <span>
-                        Pace was {insights?.pacing_status.toLowerCase() || "measured"} ({acoustic_stats.wpm.toFixed(0)} wpm) — aim for 110–150 wpm for a conversational feel.
+                        Pace was {insights?.pacing_status.toLowerCase() || "measured"} ({acoustic_stats.wpm.toFixed(0)} wpm) — target 110–150 wpm for optimal conversational cadence.
                       </span>
                     </div>
                   )}
                   {linguistic_stats && linguistic_stats.run_on_sentences > 0 && (
                     <div className="flex items-start gap-2">
-                      <span className="text-emerald-600 font-bold">📝</span>
-                      <span>{linguistic_stats.run_on_sentences} run-on sentence(s) detected (40+ words with no break) — try breaking long thoughts into shorter sentences.</span>
+                      <span className="text-slate-400 font-bold">•</span>
+                      <span>{linguistic_stats.run_on_sentences} run-on sentence(s) detected (40+ words without punctuation breaks).</span>
                     </div>
                   )}
                 </div>
@@ -798,11 +796,10 @@ function BackendReport({
 
             {/* Speaker Insights */}
             {insights && (
-              <div className="bg-blue-50/50 rounded-xl border border-blue-200/60 p-5 space-y-3">
+              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">📌</span>
-                  <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                    Speaker Insights
+                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
+                    Speaker Metrics
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -813,19 +810,18 @@ function BackendReport({
                   <InfoTile label="Presence" value={insights.fidget_index} />
                   <InfoTile label="Fillers" value={insights.filler_severity} />
                 </div>
-                <p className="text-[10px] text-blue-600/80 font-medium italic">
-                  * Note: Your silence ratio was {insights.silence_ratio_pct}%.
+                <p className="text-[10px] text-slate-500 font-mono italic">
+                  * Silence ratio: {insights.silence_ratio_pct}%.
                 </p>
               </div>
             )}
 
             {/* Speaking Stats */}
             {acoustic_stats && (
-              <div className="bg-blue-50/40 rounded-xl border border-blue-200/50 p-5 space-y-3">
+              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🎵</span>
-                  <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                    Speaking Stats
+                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
+                    Acoustic Stats
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -834,7 +830,7 @@ function BackendReport({
                     <span className="text-sm font-black font-mono text-slate-900">{acoustic_stats.wpm.toFixed(0)}</span>
                   </div>
                   <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Filler Words</span>
+                    <span className="text-xs font-medium text-slate-600">Filler Words Ratio</span>
                     <span className="text-sm font-black font-mono text-slate-900">{((acoustic_stats.filler_word_ratio || 0) * 100).toFixed(1)}%</span>
                   </div>
                 </div>
@@ -843,17 +839,16 @@ function BackendReport({
 
             {/* Language & Vocabulary */}
             {linguistic_stats && (
-              <div className="bg-blue-50/40 rounded-xl border border-blue-200/50 p-5 space-y-4">
+              <div className="bg-slate-50/50 rounded-xl border border-slate-200 p-5 space-y-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">📝</span>
-                  <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
+                  <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
                     Language &amp; Vocabulary
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
-                    <span className="text-xs font-medium text-slate-600">Weak Words Found</span>
+                    <span className="text-xs font-medium text-slate-600">Weak Words</span>
                     <span className="text-sm font-black font-mono text-slate-900">{linguistic_stats.weak_words_count}</span>
                   </div>
                   <div className="bg-white rounded-lg p-3 border border-slate-200 flex justify-between items-center">
@@ -865,10 +860,10 @@ function BackendReport({
                 {/* Filler Words Chips */}
                 {linguistic_stats.filler_words_found && linguistic_stats.filler_words_found.length > 0 && (
                   <div>
-                    <span className="text-[11px] text-slate-600 font-bold block mb-2 font-mono uppercase">Filler Words Found</span>
+                    <span className="text-[11px] text-slate-500 font-bold block mb-2 font-mono uppercase">Filler Words Detected</span>
                     <div className="flex flex-wrap gap-1.5">
                       {linguistic_stats.filler_words_found.map((w, i) => (
-                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-md bg-white text-slate-800 border border-slate-300 shadow-2xs">
                           {w}
                         </span>
                       ))}
@@ -879,10 +874,10 @@ function BackendReport({
                 {/* Top Repeated Words Chips */}
                 {linguistic_stats.top_repeated_words && linguistic_stats.top_repeated_words.length > 0 && (
                   <div>
-                    <span className="text-[11px] text-slate-600 font-bold block mb-2 font-mono uppercase">Top Repeated Words</span>
+                    <span className="text-[11px] text-slate-500 font-bold block mb-2 font-mono uppercase">Top Repeated Words</span>
                     <div className="flex flex-wrap gap-1.5">
                       {linguistic_stats.top_repeated_words.map((w, i) => (
-                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-300">
+                        <span key={i} className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-md bg-white text-slate-800 border border-slate-300 shadow-2xs">
                           {w}
                         </span>
                       ))}
@@ -896,7 +891,7 @@ function BackendReport({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-                  ⚡ Detected Events ({detected_events.length} total — used for Whisper stitching)
+                  Detected Telemetry Events ({detected_events.length})
                 </span>
               </div>
 
@@ -947,7 +942,7 @@ function BackendReport({
                   onClick={() => setShowRawRanges((v) => !v)}
                   className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-xs font-mono font-bold text-slate-700"
                 >
-                  <span>📊 RAW SCORE RANGES (THRESHOLD TUNING)</span>
+                  <span>RAW SCORE RANGES (THRESHOLD TUNING)</span>
                   <span>{showRawRanges ? "▲" : "▼"}</span>
                 </button>
                 {showRawRanges && (
@@ -988,9 +983,9 @@ function BackendReport({
           <div className="space-y-6">
             {llmLoading && (
               <div className="bg-slate-50 rounded-xl p-6 text-center border border-slate-200 space-y-3">
-                <div className="w-6 h-6 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin mx-auto" />
+                <div className="w-5 h-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin mx-auto" />
                 <p className="text-xs font-mono font-bold text-slate-700 uppercase">
-                  Generating Detailed AI Coaching Feedback via LLM...
+                  Generating Diagnostic AI Coaching Feedback...
                 </p>
                 <p className="text-xs text-slate-500 font-medium">
                   Analyzing sentence structure, vocabulary impact, and moment annotations.
@@ -1000,7 +995,7 @@ function BackendReport({
 
             {llmError && (
               <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-center">
-                <p className="text-xs font-bold text-rose-700 font-mono">LLM Feedback Error</p>
+                <p className="text-xs font-bold text-rose-700 font-mono uppercase">LLM Analysis Status</p>
                 <p className="text-xs text-rose-600 mt-1">{llmError}</p>
               </div>
             )}
@@ -1010,11 +1005,10 @@ function BackendReport({
                 {/* 1. Coach's Assessment & Final Note (Top) */}
                 <div className="space-y-4">
                   {llmReport.overall_assessment && (
-                    <div className="bg-blue-50/60 rounded-xl border border-blue-200/60 p-5 space-y-2">
+                    <div className="bg-slate-50/70 rounded-xl border border-slate-200 p-5 space-y-2">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-base">🤖</span>
-                        <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                          COACH'S ASSESSMENT
+                        <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
+                          Overall Assessment
                         </span>
                       </div>
                       <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
@@ -1024,14 +1018,13 @@ function BackendReport({
                   )}
 
                   {llmReport.coach_final_note && (
-                    <div className="bg-emerald-50/60 rounded-xl p-5 border border-emerald-200/70 space-y-2">
+                    <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800 space-y-2 shadow-sm">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-base">💡</span>
-                        <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase tracking-wider">
-                          COACH'S FINAL NOTE
+                        <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
+                          Coach Final Recommendation
                         </span>
                       </div>
-                      <p className="text-xs sm:text-sm text-emerald-950 italic font-semibold leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-100 italic font-medium leading-relaxed">
                         &quot;{llmReport.coach_final_note}&quot;
                       </p>
                     </div>
@@ -1041,9 +1034,9 @@ function BackendReport({
                 {/* 2. Structural & Body Language Analysis */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {llmReport.structural_analysis && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block mb-2">
-                        📐 Structural Analysis
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Structural Analysis
                       </span>
                       <p className="text-xs text-slate-700 font-medium leading-relaxed">
                         {llmReport.structural_analysis}
@@ -1051,9 +1044,9 @@ function BackendReport({
                     </div>
                   )}
                   {llmReport.body_language_analysis && (
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block mb-2">
-                        👁️ Body Language Analysis
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Body Language Analysis
                       </span>
                       <p className="text-xs text-slate-700 font-medium leading-relaxed">
                         {llmReport.body_language_analysis}
@@ -1065,13 +1058,13 @@ function BackendReport({
                 {/* 3. Strengths & Gaps & Improvement Plan */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {llmReport.strengths && (
-                    <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-200/60">
-                      <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase block mb-2">
-                        ✅ Key Strengths
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase block">
+                        Key Strengths
                       </span>
-                      <ul className="space-y-1.5 text-xs text-emerald-900 font-medium">
+                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
                         {llmReport.strengths.map((s: string, i: number) => (
-                          <li key={i} className="flex items-start gap-1.5">
+                          <li key={i} className="flex items-start gap-2">
                             <span className="text-emerald-600 font-bold">•</span>
                             <span>{s}</span>
                           </li>
@@ -1081,13 +1074,13 @@ function BackendReport({
                   )}
 
                   {llmReport.gap_analysis && (
-                    <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/60">
-                      <span className="text-[11px] font-mono font-bold text-amber-800 uppercase block mb-2">
-                        🔍 Growth Areas
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-[11px] font-mono font-bold text-amber-800 uppercase block">
+                        Growth Areas
                       </span>
-                      <ul className="space-y-1.5 text-xs text-amber-900 font-medium">
+                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
                         {llmReport.gap_analysis.map((g: string, i: number) => (
-                          <li key={i} className="flex items-start gap-1.5">
+                          <li key={i} className="flex items-start gap-2">
                             <span className="text-amber-600 font-bold">•</span>
                             <span>{g}</span>
                           </li>
@@ -1097,14 +1090,14 @@ function BackendReport({
                   )}
 
                   {llmReport.improvement_plan && (
-                    <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-200/60">
-                      <span className="text-[11px] font-mono font-bold text-blue-800 uppercase block mb-2">
-                        🎯 Improvement Plan
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-[11px] font-mono font-bold text-slate-800 uppercase block">
+                        Improvement Plan
                       </span>
-                      <ul className="space-y-1.5 text-xs text-blue-900 font-medium">
+                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
                         {llmReport.improvement_plan.map((p: string, i: number) => (
-                          <li key={i} className="flex items-start gap-1.5">
-                            <span className="text-blue-600 font-bold">{i + 1}.</span>
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="font-mono font-bold text-slate-900">{i + 1}.</span>
                             <span>{p}</span>
                           </li>
                         ))}
@@ -1115,35 +1108,34 @@ function BackendReport({
 
                 {/* 4. Detailed Corrections (Before / After / Why) */}
                 {llmReport.corrections && llmReport.corrections.length > 0 && (
-                  <div className="bg-blue-50/40 rounded-xl border border-blue-200/50 p-5 space-y-4">
+                  <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-5 space-y-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base">📝</span>
-                      <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                        CORRECTIONS & PHRASING REFINEMENTS
+                      <span className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
+                        Phrasing &amp; Delivery Refinements
                       </span>
                     </div>
 
                     <div className="space-y-4">
                       {llmReport.corrections.map((corr: any, idx: number) => (
                         <div key={idx} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
-                          <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider block">
+                          <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
                             {corr.category}
                           </span>
 
                           <div className="space-y-2 text-xs">
-                            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-rose-700 uppercase block mb-1">BEFORE</span>
-                              <p className="text-rose-900 italic font-medium">&quot;{corr.before}&quot;</p>
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1">BEFORE</span>
+                              <p className="text-slate-800 italic font-medium">&quot;{corr.before}&quot;</p>
                             </div>
 
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase block mb-1">AFTER</span>
-                              <p className="text-emerald-900 font-semibold">&quot;{corr.after}&quot;</p>
+                            <div className="bg-emerald-50/50 border border-emerald-200/70 rounded-lg p-3">
+                              <span className="text-[10px] font-mono font-bold text-emerald-800 uppercase block mb-1">AFTER</span>
+                              <p className="text-emerald-950 font-semibold">&quot;{corr.after}&quot;</p>
                             </div>
 
                             <div className="pt-1">
-                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-0.5">WHY</span>
-                              <p className="text-slate-700 font-medium">{corr.why}</p>
+                              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block mb-0.5">WHY</span>
+                              <p className="text-slate-600 font-medium">{corr.why}</p>
                             </div>
                           </div>
                         </div>
@@ -1225,9 +1217,8 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
       {/* Face & Head Section */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-base">👤</span>
           <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-            FACE &amp; HEAD
+            FACE &amp; HEAD TELEMETRY
           </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
@@ -1244,15 +1235,14 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
       {/* Gaze Zone Distribution */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-base">👀</span>
           <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
             GAZE ZONE DISTRIBUTION
           </span>
         </div>
         <div className="grid grid-cols-5 gap-2 text-center">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-            <span className="text-[9px] text-emerald-800 font-bold uppercase block">CENTER</span>
-            <span className="text-base font-black font-mono text-emerald-700">{centerPct}%</span>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <span className="text-[9px] text-slate-600 font-bold uppercase block">CENTER</span>
+            <span className="text-base font-black font-mono text-slate-900">{centerPct}%</span>
           </div>
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
             <span className="text-[9px] text-slate-600 font-bold uppercase block">LEFT</span>
@@ -1272,14 +1262,13 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
           </div>
         </div>
         <p className="text-[10px] text-slate-500 font-medium mt-2">
-          Center &gt; 50% is ideal — means consistent camera eye contact.
+          Center &gt; 50% is ideal — indicates steady camera focus.
         </p>
       </div>
 
       {/* Emotion Signals */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-base">💭</span>
           <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
             EMOTION SIGNALS
           </span>
@@ -1292,15 +1281,15 @@ function ScorePanel({ frameAnalysis }: { frameAnalysis: FrameAnalysisEntry[] }) 
           <ScoreBar label="Squint (eye strain)"     value={squint}    invert />
         </div>
         <p className="text-[10px] text-slate-500 font-medium mt-3">
-          Lower is better — these signals indicate tension or discomfort.
+          Lower is better — these signals reflect vocal and facial tension.
         </p>
       </div>
 
       {/* Upper Body posture note */}
-      <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-2 text-xs text-amber-900 font-medium">
-        <span className="text-amber-600 font-bold">🧍</span>
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-start gap-2 text-xs text-slate-700 font-medium">
+        <span className="text-slate-500 font-bold font-mono text-[10px] uppercase">NOTE:</span>
         <span>
-          Body posture data unavailable — PoseLandmarker may not have detected your full upper body. Try sitting further back from the camera.
+          Body posture data unavailable — PoseLandmarker may not have detected your upper body. Try positioning further back from the camera.
         </span>
       </div>
 
