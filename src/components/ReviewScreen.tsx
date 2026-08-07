@@ -1007,59 +1007,38 @@ function BackendReport({
 
             {llmReport && (
               <div className="space-y-6">
-                {/* Coach's Assessment */}
-                <div className="bg-blue-50/60 rounded-xl border border-blue-200/60 p-5 space-y-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-base">🤖</span>
-                    <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                      COACH'S ASSESSMENT
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
-                    {llmReport.overall_assessment}
-                  </p>
+                {/* 1. Coach's Assessment & Final Note (Top) */}
+                <div className="space-y-4">
+                  {llmReport.overall_assessment && (
+                    <div className="bg-blue-50/60 rounded-xl border border-blue-200/60 p-5 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">🤖</span>
+                        <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
+                          COACH'S ASSESSMENT
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
+                        {llmReport.overall_assessment}
+                      </p>
+                    </div>
+                  )}
+
+                  {llmReport.coach_final_note && (
+                    <div className="bg-emerald-50/60 rounded-xl p-5 border border-emerald-200/70 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">💡</span>
+                        <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase tracking-wider">
+                          COACH'S FINAL NOTE
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-emerald-950 italic font-semibold leading-relaxed">
+                        &quot;{llmReport.coach_final_note}&quot;
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Corrections List */}
-                {llmReport.corrections && llmReport.corrections.length > 0 && (
-                  <div className="bg-blue-50/40 rounded-xl border border-blue-200/50 p-5 space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base">📝</span>
-                      <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
-                        CORRECTIONS
-                      </span>
-                    </div>
-
-                    <div className="space-y-4">
-                      {llmReport.corrections.map((corr: any, idx: number) => (
-                        <div key={idx} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
-                          <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider block">
-                            {corr.category}
-                          </span>
-
-                          <div className="space-y-2 text-xs">
-                            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-rose-700 uppercase block mb-1">BEFORE</span>
-                              <p className="text-rose-900 italic font-medium">&quot;{corr.before}&quot;</p>
-                            </div>
-
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                              <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase block mb-1">AFTER</span>
-                              <p className="text-emerald-900 font-semibold">&quot;{corr.after}&quot;</p>
-                            </div>
-
-                            <div className="pt-1">
-                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-0.5">WHY</span>
-                              <p className="text-slate-700 font-medium">{corr.why}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Structural & Body Language Analysis */}
+                {/* 2. Structural & Body Language Analysis */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {llmReport.structural_analysis && (
                     <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
@@ -1083,7 +1062,7 @@ function BackendReport({
                   )}
                 </div>
 
-                {/* Strengths & Gaps & Improvement Plan */}
+                {/* 3. Strengths & Gaps & Improvement Plan */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {llmReport.strengths && (
                     <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-200/60">
@@ -1134,15 +1113,42 @@ function BackendReport({
                   )}
                 </div>
 
-                {/* Final Coach Note */}
-                {llmReport.coach_final_note && (
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-center">
-                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1">
-                      COACH'S FINAL NOTE
-                    </span>
-                    <p className="text-xs text-slate-800 italic font-medium">
-                      &quot;{llmReport.coach_final_note}&quot;
-                    </p>
+                {/* 4. Detailed Corrections (Before / After / Why) */}
+                {llmReport.corrections && llmReport.corrections.length > 0 && (
+                  <div className="bg-blue-50/40 rounded-xl border border-blue-200/50 p-5 space-y-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base">📝</span>
+                      <span className="text-[11px] font-mono font-bold text-blue-800 uppercase tracking-wider">
+                        CORRECTIONS & PHRASING REFINEMENTS
+                      </span>
+                    </div>
+
+                    <div className="space-y-4">
+                      {llmReport.corrections.map((corr: any, idx: number) => (
+                        <div key={idx} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+                          <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider block">
+                            {corr.category}
+                          </span>
+
+                          <div className="space-y-2 text-xs">
+                            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                              <span className="text-[10px] font-mono font-bold text-rose-700 uppercase block mb-1">BEFORE</span>
+                              <p className="text-rose-900 italic font-medium">&quot;{corr.before}&quot;</p>
+                            </div>
+
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                              <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase block mb-1">AFTER</span>
+                              <p className="text-emerald-900 font-semibold">&quot;{corr.after}&quot;</p>
+                            </div>
+
+                            <div className="pt-1">
+                              <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-0.5">WHY</span>
+                              <p className="text-slate-700 font-medium">{corr.why}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
