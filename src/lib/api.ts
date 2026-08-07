@@ -62,6 +62,34 @@ export interface DerivedInsights {
   filler_severity: string;
 }
 
+export interface BeforeAfterCorrection {
+  category: string;
+  before: string;
+  after: string;
+  why: string;
+}
+
+export interface MomentAnnotation {
+  event_type: string;
+  start_ms: number;
+  end_ms: number;
+  spoken_text?: string;
+  impact: string;
+}
+
+export interface CoachingReport {
+  overall_assessment: string;
+  corrections: BeforeAfterCorrection[];
+  structural_analysis: string;
+  body_language_analysis: string;
+  framework_detected?: string;
+  strengths: string[];
+  gap_analysis: string[];
+  improvement_plan: string[];
+  moment_annotations?: MomentAnnotation[];
+  coach_final_note: string;
+}
+
 export interface AnalysisResponse {
   audio_received_bytes: number;
   frame_count: number;
@@ -77,6 +105,8 @@ export interface AnalysisResponse {
   detected_events: DetectedEvent[];
   score_ranges: ScoreRanges;
   transcript: string;
+  calibration_session_id?: string;
+  coaching_report?: CoachingReport;
 }
 
 export interface DetectedEvent {
@@ -85,6 +115,7 @@ export interface DetectedEvent {
   end_ms: number;
   duration_ms: number;
   peak_value: number | null;
+  spoken_text?: string;
 }
 
 export interface ScoreRanges {
@@ -115,6 +146,7 @@ export interface AnalyzePayload {
     mediapipeReady: boolean;
     frameAnalysis: object[];
   };
+  mode?: string;
 }
 
 /**
@@ -127,6 +159,9 @@ export async function postAnalyze(payload: AnalyzePayload): Promise<AnalysisResp
   const form = new FormData();
   form.append("audio", payload.audioBlob, "recording.webm");
   form.append("frame_data", JSON.stringify(payload.frameData));
+  if (payload.mode) {
+    form.append("mode", payload.mode);
+  }
 
   const res = await fetch(`${BACKEND_URL}/analyze`, {
     method: "POST",
@@ -139,4 +174,21 @@ export async function postAnalyze(payload: AnalyzePayload): Promise<AnalysisResp
   }
 
   return res.json() as Promise<AnalysisResponse>;
+}
+
+/**
+ * GET /analyze/coach/{session_id}
+ *
+ * Polls for asynchronous LLM coaching report.
+ */
+export async function fetchCoachingReport(sessionId: string): Promise<CoachingReport | null> {
+  const res = await fetch(`${BACKEND_URL}/analyze/coach/${sessionId}`);
+  if (res.status === 202) {
+    return null; // still processing
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Backend coach polling failed ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<CoachingReport>;
 }
