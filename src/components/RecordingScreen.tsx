@@ -7,6 +7,7 @@ interface RecordingScreenProps {
   topic: string;
   onDone: (result: RecordingResult) => void;
   onBack: () => void;
+  onUploadVideo?: (file: File, topicName?: string) => void;
 }
 
 type RecordingState = "requesting" | "countdown" | "recording" | "stopping" | "error_permission" | "error_unsupported";
@@ -18,7 +19,7 @@ function formatDuration(ms: number): string {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export default function RecordingScreen({ topic, onDone, onBack }: RecordingScreenProps) {
+export default function RecordingScreen({ topic, onDone, onBack, onUploadVideo }: RecordingScreenProps) {
   const [state, setState] = useState<RecordingState>("requesting");
   const [countdown, setCountdown] = useState<number>(3);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -32,6 +33,21 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
   const startTimeRef = useRef<number>(0);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onUploadVideo) {
+      stopStream();
+      stopCountdownTimer();
+      stopTimer();
+      onUploadVideo(file, topic);
+    }
+  };
+
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
+  };
 
   // Clean up media stream
   const stopStream = useCallback(() => {
@@ -174,6 +190,7 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
         title="Browser Unsupported"
         message="Your browser doesn't support MediaRecorder. Please try Chrome, Firefox, or Edge."
         onBack={onBack}
+        onUploadVideo={triggerUpload}
       />
     );
   }
@@ -187,12 +204,22 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
           "Vocalyze AI requires camera and microphone permissions for session analysis. Please allow access in browser bar."
         }
         onBack={onBack}
+        onUploadVideo={triggerUpload}
       />
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#f8fafc] bg-grid-pattern text-[#0f172a]">
+      {/* Hidden File Input for Video Testing */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="video/*"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       <div className="w-full max-w-2xl">
         {/* Top header navigation */}
         <div className="flex items-center justify-between mb-4">
@@ -326,18 +353,41 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
   );
 }
 
-function ErrorCard({ title, message, onBack }: { title: string; message: string; onBack: () => void }) {
+function ErrorCard({
+  title,
+  message,
+  onBack,
+  onUploadVideo,
+}: {
+  title: string;
+  message: string;
+  onBack: () => void;
+  onUploadVideo?: () => void;
+}) {
   return (
     <div className="min-h-screen flex items-center justify-center px-6 bg-[#f8fafc] bg-grid-pattern text-[#0f172a]">
-      <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-lg">
-        <h2 className="text-base font-extrabold text-slate-900 mb-2">{title}</h2>
-        <p className="text-xs text-slate-600 leading-relaxed mb-6 font-medium">{message}</p>
-        <button
-          onClick={onBack}
-          className="btn-primary w-full py-3 rounded-xl text-xs font-bold font-mono tracking-wide uppercase shadow-md cursor-pointer"
-        >
-          Return to Modules
-        </button>
+      <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-lg space-y-4">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900 mb-2">{title}</h2>
+          <p className="text-xs text-slate-600 leading-relaxed font-medium">{message}</p>
+        </div>
+
+        <div className="space-y-2">
+          {onUploadVideo && (
+            <button
+              onClick={onUploadVideo}
+              className="w-full py-3 rounded-xl text-xs font-bold font-mono tracking-wide uppercase bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>📁 Upload Pre-Recorded Video for Testing</span>
+            </button>
+          )}
+          <button
+            onClick={onBack}
+            className="w-full py-3 rounded-xl text-xs font-bold font-mono tracking-wide uppercase border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            Return to Modules
+          </button>
+        </div>
       </div>
     </div>
   );

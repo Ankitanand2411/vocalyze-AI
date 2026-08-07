@@ -41,6 +41,27 @@ export default function Home() {
     setScreen("review");
   };
 
+  const handleUploadVideo = (file: File, topicName?: string) => {
+    const videoEl = document.createElement("video");
+    const objectUrl = URL.createObjectURL(file);
+    videoEl.src = objectUrl;
+
+    const proceedWithResult = (durationMs: number) => {
+      URL.revokeObjectURL(objectUrl);
+      const resultObj: RecordingResult = {
+        videoBlob: file,
+        audioBlob: file,
+        durationMs,
+        topic: topicName || `Uploaded Test Video (${file.name})`,
+      };
+      setResult(resultObj);
+      setScreen("review");
+    };
+
+    videoEl.onloadedmetadata = () => proceedWithResult(Math.round(videoEl.duration * 1000) || 10000);
+    videoEl.onerror = () => proceedWithResult(10000);
+  };
+
   const handleRetry = () => {
     setResult(null);
     setScreen("topic");
@@ -55,7 +76,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#07090e] text-[#f8fafc] bg-grid-pattern relative selection:bg-indigo-500/30 selection:text-indigo-200">
       {screen === "landing" && (
-        <LandingScreen onSelectImpromptu={handleModuleSelect} />
+        <LandingScreen 
+          onSelectImpromptu={handleModuleSelect}
+          onUploadVideo={handleUploadVideo} 
+        />
       )}
       {screen === "topic" && (
         <TopicScreen onStart={handleTopicReady} onBack={handleBackToModules} />
@@ -65,6 +89,7 @@ export default function Home() {
           topic={currentTopic}
           onDone={handleRecordingDone}
           onBack={handleBackToModules}
+          onUploadVideo={handleUploadVideo}
         />
       )}
       {screen === "review" && result && (

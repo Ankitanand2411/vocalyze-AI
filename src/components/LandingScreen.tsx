@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface LandingScreenProps {
   onSelectImpromptu: (topic?: string) => void;
+  onUploadVideo?: (file: File, topicName?: string) => void;
 }
 
 type TabView = "platform" | "telemetry";
@@ -87,8 +88,9 @@ const TELEMETRY_FEATURES = [
   },
 ];
 
-export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps) {
+export default function LandingScreen({ onSelectImpromptu, onUploadVideo }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<TabView>("platform");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync hash with tab view
   useEffect(() => {
@@ -113,10 +115,30 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
     onSelectImpromptu(randomTopic);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onUploadVideo) {
+      onUploadVideo(file);
+    }
+  };
+
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className={`bg-[#f8fafc] bg-grid-pattern text-[#0f172a] ${
       activeTab === "platform" ? "min-h-screen flex flex-col justify-between overflow-x-hidden" : "min-h-screen flex flex-col justify-between"
     }`}>
+      {/* Hidden File Input for Video Testing */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="video/*"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       {/* Persistent Widescreen Navbar */}
       <header className="border-b border-slate-200 bg-[#f8fafc]/90 backdrop-blur-sm px-6 lg:px-12 py-3.5 flex-shrink-0 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
@@ -157,13 +179,25 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
             </button>
           </nav>
 
-          {/* Right Action button */}
-          <button 
-            onClick={handleStartSession}
-            className="btn-primary text-xs px-4 py-2 rounded font-mono font-bold tracking-wide hidden sm:inline-block uppercase cursor-pointer"
-          >
-            Start Session
-          </button>
+          {/* Right Action buttons */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={triggerUpload}
+              className="text-xs px-3.5 py-2 rounded font-mono font-bold tracking-wide bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition-colors uppercase cursor-pointer flex items-center gap-1.5 shadow-sm"
+              title="Upload a pre-recorded video file for testing"
+            >
+              <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span>Upload Video</span>
+            </button>
+            <button 
+              onClick={handleStartSession}
+              className="btn-primary text-xs px-4 py-2 rounded font-mono font-bold tracking-wide hidden sm:inline-block uppercase cursor-pointer"
+            >
+              Start Session
+            </button>
+          </div>
         </div>
       </header>
 
