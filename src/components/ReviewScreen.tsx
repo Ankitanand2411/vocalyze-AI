@@ -421,125 +421,137 @@ export default function ReviewScreen({ result, onRetry, onBack }: ReviewScreenPr
   }, [result.videoBlob, result.audioBlob]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 animate-fade-in bg-[#f8fafc] bg-grid-pattern text-[#0f172a]">
-      <div className="w-full max-w-3xl">
+    <div className="min-h-screen animate-fade-in bg-[#f8fafc] bg-grid-pattern text-[#0f172a] px-4 sm:px-8 py-8">
+      <div className="max-w-[1440px] mx-auto space-y-6">
         {/* Navigation header */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-bold hover:text-slate-900 transition-colors bg-white border border-slate-300 px-3.5 py-1.5 rounded-lg shadow-sm cursor-pointer"
-            aria-label="Back to modules"
-          >
-            <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-            <span>Back to Modules</span>
-          </button>
-          <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded border border-emerald-300 font-mono">
+        <div className="flex items-center justify-between bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-bold hover:text-slate-900 transition-colors bg-slate-50 hover:bg-slate-100 border border-slate-300 px-3.5 py-2 rounded-xl shadow-sm cursor-pointer"
+              aria-label="Back to modules"
+            >
+              <svg className="w-3.5 h-3.5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+              <span>Back to Modules</span>
+            </button>
+            <div>
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight">Vocalyze AI Diagnostic Console</h1>
+              <p className="text-[11px] text-slate-500 font-medium">Session telemetry and AI coaching breakdown</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-xl border border-emerald-300 font-mono">
             Session Review
           </span>
         </div>
 
-        {/* Video Player Container */}
-        <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video border border-slate-300 mb-6 shadow-md">
-          {videoUrl && (
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              controls
-              playsInline
-              className="w-full h-full object-contain"
-              aria-label="Recorded session playback"
-            />
-          )}
-        </div>
-
-        {/* Info Tiles */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <InfoTile label="Duration" value={formatDuration(result.durationMs)} />
-          <InfoTile label="Video File" value={formatFileSize(result.videoBlob.size)} />
-          <InfoTile label="Audio Stream" value={formatFileSize(result.audioBlob.size)} />
-        </div>
-
-        {/* Topic Card */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-6 shadow-sm">
-          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1">
-            Prompt
-          </span>
-          <p className="text-xs sm:text-sm text-slate-800 font-bold leading-relaxed">&quot;{result.topic}&quot;</p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            id="analyze-btn"
-            onClick={handleAnalyze}
-            disabled={analysisStatus === "running"}
-            className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 ${
-              analysisStatus === "running"
-                ? "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
-                : "btn-primary cursor-pointer shadow-md"
-            }`}
-          >
-            <span>
-              {analysisStatus === "running"
-                ? `Analyzing Telemetry… ${analysisProgress}%`
-                : analysisStatus === "done"
-                ? "Re-Analyze Telemetry"
-                : "Analyze Recording"}
-            </span>
-          </button>
-          <button
-            id="retry-btn"
-            onClick={onRetry}
-            className="py-3.5 px-6 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
-          >
-            Try Again
-          </button>
-        </div>
-
-        {analysisStatus === "running" && (
-          <div className="mt-4">
-            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-600 transition-all duration-200 linear"
-                style={{ width: `${analysisProgress}%` }}
-              />
+        {/* Main 2-Column Split Workspace */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column (Video + Telemetry, Sticky on Desktop) */}
+          <div className="lg:col-span-5 lg:sticky lg:top-6 space-y-6">
+            {/* Video Player Container */}
+            <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video border border-slate-300 shadow-md relative group">
+              {videoUrl && (
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls
+                  playsInline
+                  className="w-full h-full object-contain"
+                  aria-label="Recorded session playback"
+                />
+              )}
             </div>
+
+            {/* Info Tiles */}
+            <div className="grid grid-cols-3 gap-3">
+              <InfoTile label="Duration" value={formatDuration(result.durationMs)} />
+              <InfoTile label="Video File" value={formatFileSize(result.videoBlob.size)} />
+              <InfoTile label="Audio Stream" value={formatFileSize(result.audioBlob.size)} />
+            </div>
+
+            {/* Topic Card */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+              <span className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1">
+                Prompt
+              </span>
+              <p className="text-xs sm:text-sm text-slate-800 font-bold leading-relaxed">&quot;{result.topic}&quot;</p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                id="analyze-btn"
+                onClick={handleAnalyze}
+                disabled={analysisStatus === "running"}
+                className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 ${
+                  analysisStatus === "running"
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                    : "btn-primary cursor-pointer shadow-md"
+                }`}
+              >
+                <span>
+                  {analysisStatus === "running"
+                    ? `Analyzing Telemetry… ${analysisProgress}%`
+                    : analysisStatus === "done"
+                    ? "Re-Analyze Telemetry"
+                    : "Analyze Recording"}
+                </span>
+              </button>
+              <button
+                id="retry-btn"
+                onClick={onRetry}
+                className="py-3.5 px-6 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+              >
+                Try Again
+              </button>
+            </div>
+
+            {analysisStatus === "running" && (
+              <div className="mt-4">
+                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-600 transition-all duration-200 linear"
+                    style={{ width: `${analysisProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {analysisStatus === "error" && (
+              <p className="mt-4 text-xs text-rose-600 text-center font-bold">{analysisError}</p>
+            )}
+
+            {/* MediaPipe On-Device Telemetry Panel */}
+            {mediapipeReady && frameAnalysis.length > 0 && (
+              <ScorePanel frameAnalysis={frameAnalysis} />
+            )}
           </div>
-        )}
 
-        {analysisStatus === "error" && (
-          <p className="mt-4 text-xs text-rose-600 text-center font-bold">{analysisError}</p>
-        )}
+          {/* Right Column (Full Diagnostic & AI Coaching Report) */}
+          <div className="lg:col-span-7 space-y-6">
+            <BackendReport
+              status={backendStatus}
+              report={backendReport}
+              error={backendError}
+              onSeek={(timeMs) => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = timeMs / 1000;
+                  videoRef.current.play().catch(e => console.error("Play failed:", e));
+                  videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }}
+            />
 
-        {mediapipeReady && frameAnalysis.length > 0 && (
-          <ScorePanel frameAnalysis={frameAnalysis} />
-        )}
-
-        <BackendReport
-          status={backendStatus}
-          report={backendReport}
-          error={backendError}
-          onSeek={(timeMs) => {
-            if (videoRef.current) {
-              videoRef.current.currentTime = timeMs / 1000;
-              videoRef.current.play().catch(e => console.error("Play failed:", e));
-              videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          }}
-        />
-
-        {mediapipeReady && frameAnalysis.length > 0 && (
-          <ScorePanel frameAnalysis={frameAnalysis} />
-        )}
-
-        <DebugInspector
-          audioBlob={result.audioBlob}
-          videoBlob={result.videoBlob}
-          frameAnalysis={frameAnalysis}
-          mediapipeReady={mediapipeReady}
-        />
+            <DebugInspector
+              audioBlob={result.audioBlob}
+              videoBlob={result.videoBlob}
+              frameAnalysis={frameAnalysis}
+              mediapipeReady={mediapipeReady}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
