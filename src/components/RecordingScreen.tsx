@@ -9,7 +9,7 @@ interface RecordingScreenProps {
   onBack: () => void;
 }
 
-type RecordingState = "requesting" | "recording" | "stopping" | "error_permission" | "error_unsupported";
+type RecordingState = "requesting" | "countdown" | "recording" | "stopping" | "error_permission" | "error_unsupported";
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -20,6 +20,7 @@ function formatDuration(ms: number): string {
 
 export default function RecordingScreen({ topic, onDone, onBack }: RecordingScreenProps) {
   const [state, setState] = useState<RecordingState>("requesting");
+  const [countdown, setCountdown] = useState<number>(3);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [elapsedMs, setElapsedMs] = useState<number>(0);
 
@@ -30,12 +31,20 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
   const audioChunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Clean up media stream
   const stopStream = useCallback(() => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
+    }
+  }, []);
+
+  const stopCountdownTimer = useCallback(() => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
     }
   }, []);
 
@@ -95,9 +104,24 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
           }
         };
 
-        recorder.start(500); // chunk every 500ms
-        startTimer();
-        setState("recording");
+        // Start 3-second countdown to get ready
+        setState("countdown");
+        setCountdown(3);
+
+        let currentCount = 3;
+        countdownIntervalRef.current = setInterval(() => {
+          currentCount -= 1;
+          if (currentCount > 0) {
+            setCountdown(currentCount);
+          } else {
+            stopCountdownTimer();
+            if (isMounted && mediaRecorderRef.current) {
+              mediaRecorderRef.current.start(500); // chunk every 500ms
+              startTimer();
+              setState("recording");
+            }
+          }
+        }, 1000);
       } catch (err: unknown) {
         if (!isMounted) return;
         console.error("Camera access error:", err);
@@ -111,10 +135,11 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
 
     return () => {
       isMounted = false;
+      stopCountdownTimer();
       stopTimer();
       stopStream();
     };
-  }, [startTimer, stopTimer, stopStream]);
+  }, [startTimer, stopTimer, stopStream, stopCountdownTimer]);
 
   // Handle Stop Recording
   const handleStop = useCallback(() => {
@@ -182,14 +207,35 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             <span>Cancel</span>
           </button>
 
-          <span className="text-xs font-mono font-bold text-rose-700 bg-rose-100 px-3 py-1 rounded border border-rose-300 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
-            <span>Recording Active</span>
-          </span>
+          {state === "countdown" && (
+            <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded border border-amber-300 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping" />
+              <span>GET READY ({countdown}s)</span>
+            </span>
+          )}
+
+          {state === "recording" && (
+            <span className="text-xs font-mono font-bold text-rose-700 bg-rose-100 px-3 py-1 rounded border border-rose-300 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+              <span>Recording Active</span>
+            </span>
+          )}
+
+          {state === "requesting" && (
+            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded border border-slate-300 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+              <span>Connecting Camera</span>
+            </span>
+          )}
         </div>
 
         {/* Topic Banner */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4 shadow-sm">
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4 shadow-sm relative overflow-hidden">
+          {state === "countdown" && (
+            <div className="absolute top-0 right-0 bg-amber-500 text-white font-mono text-[10px] font-bold px-2.5 py-0.5 rounded-bl uppercase tracking-wider">
+              Prep Mode: {countdown}s
+            </div>
+          )}
           <span className="text-[10px] text-slate-500 uppercase font-mono font-bold block mb-1">
             Topic Prompt
           </span>
@@ -208,6 +254,25 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             className="w-full h-full object-cover transform -scale-x-100"
             aria-label="Live camera preview"
           />
+
+          {/* Countdown Overlay */}
+          {state === "countdown" && (
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-[2px] flex flex-col items-center justify-center text-center p-6 transition-all">
+              <div className="font-mono text-xs text-amber-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span>GET READY TO SPEAK</span>
+              </div>
+              <div
+                key={countdown}
+                className="text-8xl font-black text-white font-mono my-2 animate-bounce drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]"
+              >
+                {countdown}
+              </div>
+              <p className="text-xs text-slate-300 font-mono font-medium max-w-sm mt-2">
+                Read the prompt above. Recording starts automatically when timer reaches zero.
+              </p>
+            </div>
+          )}
 
           {/* Minimal Status pill */}
           {state === "recording" && (
@@ -251,7 +316,9 @@ export default function RecordingScreen({ topic, onDone, onBack }: RecordingScre
             }`}
           >
             <span className="w-2.5 h-2.5 rounded-sm bg-white" />
-            <span>Stop &amp; Analyze Recording</span>
+            <span>
+              {state === "countdown" ? `Get Ready (${countdown}s)...` : "Stop & Analyze Recording"}
+            </span>
           </button>
         </div>
       </div>

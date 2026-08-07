@@ -6,13 +6,15 @@ interface LandingScreenProps {
   onSelectImpromptu: (topic?: string) => void;
 }
 
-type TabView = "platform" | "telemetry" | "modules";
+type TabView = "platform" | "telemetry";
 
 const PRESET_PROMPTS = [
-  { id: "onboarding", num: "01", label: "Leadership Pitch", text: "Deliver a 2-minute vision presentation for a new AI product line to executive leadership." },
-  { id: "impromptu", num: "02", label: "Impromptu Prompt", text: "What is one opinion you hold strongly that most people around you disagree with?" },
-  { id: "qa", num: "03", label: "Q&A Defense", text: "Explain why project timelines slipped without losing stakeholder confidence." },
-  { id: "feynman", num: "04", label: "Feynman Technique", text: "Explain how neural networks work using simple real-world analogies." },
+  "Deliver a 2-minute vision presentation for a new AI product line to executive leadership.",
+  "What is one opinion you hold strongly that most people around you disagree with?",
+  "Explain why project timelines slipped without losing stakeholder confidence.",
+  "Explain how neural networks work using simple real-world analogies.",
+  "Describe a significant challenge you overcame and what it taught you about leadership.",
+  "If you had unlimited resources, what global technical problem would you solve first?",
 ];
 
 const MODULES = [
@@ -87,15 +89,12 @@ const TELEMETRY_FEATURES = [
 
 export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<TabView>("platform");
-  const [customPrompt, setCustomPrompt] = useState<string>(
-    "What is one thing you believe strongly that most people around you disagree with?"
-  );
 
   // Sync hash with tab view
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace("#", "");
-      if (hash === "telemetry" || hash === "modules" || hash === "platform") {
+      if (hash === "telemetry" || hash === "platform") {
         setActiveTab(hash as TabView);
       }
     };
@@ -110,15 +109,16 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
   };
 
   const handleStartSession = () => {
-    onSelectImpromptu(customPrompt);
+    const randomTopic = PRESET_PROMPTS[Math.floor(Math.random() * PRESET_PROMPTS.length)];
+    onSelectImpromptu(randomTopic);
   };
 
   return (
     <div className={`bg-[#f8fafc] bg-grid-pattern text-[#0f172a] ${
-      activeTab === "platform" ? "h-screen flex flex-col justify-between overflow-hidden" : "min-h-screen flex flex-col justify-between"
+      activeTab === "platform" ? "min-h-screen flex flex-col justify-between overflow-x-hidden" : "min-h-screen flex flex-col justify-between"
     }`}>
       {/* Persistent Widescreen Navbar */}
-      <header className="border-b border-slate-200 bg-[#f8fafc]/90 backdrop-blur-sm px-6 lg:px-12 py-3.5 flex-shrink-0">
+      <header className="border-b border-slate-200 bg-[#f8fafc]/90 backdrop-blur-sm px-6 lg:px-12 py-3.5 flex-shrink-0 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
           {/* Logo */}
           <div 
@@ -143,7 +143,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              01. Platform
+              01. Modules
             </button>
             <button
               onClick={() => switchTab("telemetry")}
@@ -155,21 +155,11 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
             >
               02. Telemetry
             </button>
-            <button
-              onClick={() => switchTab("modules")}
-              className={`px-3.5 py-1.5 rounded transition-colors ${
-                activeTab === "modules"
-                  ? "bg-[#0f172a] text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              03. Modules
-            </button>
           </nav>
 
           {/* Right Action button */}
           <button 
-            onClick={() => onSelectImpromptu(customPrompt)}
+            onClick={handleStartSession}
             className="btn-primary text-xs px-4 py-2 rounded font-mono font-bold tracking-wide hidden sm:inline-block uppercase cursor-pointer"
           >
             Start Session
@@ -178,12 +168,10 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
       </header>
 
       {/* Main Content Area */}
-      <main className={`flex-1 flex flex-col justify-center max-w-[1400px] w-full mx-auto px-6 lg:px-12 animate-fade-in ${
-        activeTab === "platform" ? "py-2 overflow-hidden" : "py-12"
-      }`}>
-        {/* PAGE 1: PLATFORM (Light Slate Shaded Design) */}
+      <main className="flex-1 flex flex-col justify-center max-w-[1400px] w-full mx-auto px-6 lg:px-12 py-8 animate-fade-in">
+        {/* PAGE 1: PLATFORM / MODULES (Light Slate Shaded Design) */}
         {activeTab === "platform" && (
-          <div className="w-full space-y-4 my-auto">
+          <div className="w-full space-y-6 my-auto">
             {/* Bold Headline */}
             <div className="text-center max-w-4xl mx-auto space-y-2">
               <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500 font-bold">
@@ -202,7 +190,7 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
               <div className="bento-card-header px-6 py-3 flex items-center justify-between bg-[#f1f5f9]">
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    WORKSPACE_CONSOLE // SESSION_01
+                    WORKSPACE_CONSOLE // PRACTICE_MODULES
                   </span>
                   <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded border border-emerald-300">
                     ONLINE
@@ -213,111 +201,96 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
-                {/* Left Pane (7 cols): Prompt Configuration */}
-                <div className="lg:col-span-7 p-5 space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs uppercase font-bold text-slate-700 tracking-wider">
-                      01 // PROMPT CONFIGURATION
-                    </span>
-                    <span className="font-mono text-[11px] text-slate-500 font-medium">
-                      Source: Custom Input
-                    </span>
-                  </div>
-
-                  {/* Preset Chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {PRESET_PROMPTS.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => setCustomPrompt(p.text)}
-                        className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition-all border ${
-                          customPrompt === p.text
-                            ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                            : "bg-[#f8fafc] border-slate-200 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <span className="text-slate-400 mr-1.5">{p.num}</span>
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
-                    <span className="font-mono text-[11px] text-slate-600 font-bold uppercase tracking-wider">PROMPT_TEXT_INPUT</span>
-                    <button 
-                      onClick={() => setCustomPrompt(PRESET_PROMPTS[Math.floor(Math.random() * PRESET_PROMPTS.length)].text)}
-                      className="font-mono text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 px-3 py-1 rounded border border-slate-300 hover:bg-slate-200 transition-colors font-semibold"
-                    >
-                      Randomize Prompt
-                    </button>
-                  </div>
-
-                  {/* Textarea */}
-                  <div>
-                    <textarea
-                      value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
-                      placeholder="Enter speech prompt..."
-                      rows={3}
-                      className="w-full bg-[#f8fafc] border border-slate-300 rounded-lg p-3.5 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 transition-colors resize-none font-sans leading-relaxed shadow-inner"
-                    />
-                  </div>
-
-                  {/* Action Bar */}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="font-mono text-[11px] text-slate-500 font-medium">
-                      Zero cloud storage before analysis
-                    </span>
-                    <button
-                      onClick={handleStartSession}
-                      id="generate-video-btn"
-                      className="btn-primary text-xs font-bold px-6 py-2.5 rounded-lg flex items-center gap-2.5 font-mono tracking-wide uppercase shadow-md cursor-pointer"
-                    >
-                      <span>Start Practice Session</span>
-                      <span className="text-[10px] opacity-80 font-normal">[ ↵ ]</span>
-                    </button>
-                  </div>
+              {/* Modules Grid Section on Landing Page */}
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <span className="font-mono text-xs uppercase font-bold text-slate-700 tracking-wider">
+                    01 // SELECT PRACTICE MODULE
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-500 font-medium">
+                    Prompt auto-assigned on launch
+                  </span>
                 </div>
 
-                {/* Right Pane (5 cols): Pipeline Diagnostics */}
-                <div className="lg:col-span-5 p-5 bg-[#f8fafc] flex flex-col justify-between space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="font-mono text-xs uppercase font-bold text-slate-700 tracking-wider">
-                        02 // PIPELINE DIAGNOSTICS
-                      </span>
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {MODULES.map((mod) => (
+                    <div
+                      key={mod.id}
+                      onClick={() => mod.active && handleStartSession()}
+                      className={`bento-card bg-white flex flex-col justify-between border-slate-200 shadow-sm p-5 transition-all ${
+                        mod.active ? "cursor-pointer hover:border-emerald-600 hover:shadow-md" : "opacity-60 cursor-not-allowed"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3 font-mono text-xs">
+                          <span className="font-bold text-slate-700">{mod.code}</span>
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                              mod.active
+                                ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                : "bg-slate-200 text-slate-600 border-slate-300"
+                            }`}
+                          >
+                            {mod.badge}
+                          </span>
+                        </div>
 
-                    <div className="space-y-2.5 font-mono text-xs">
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-slate-600">MediaPipe Vision</span>
-                        <span className="text-emerald-700 font-bold">INITIALIZED</span>
+                        <span className="font-mono text-[11px] text-emerald-700 block mb-1 uppercase font-bold tracking-wider">
+                          {mod.tagline}
+                        </span>
+                        <h3 className="text-base font-extrabold text-[#0f172a] mb-2">{mod.name}</h3>
+                        <p className="text-xs text-slate-600 leading-relaxed font-medium mb-4">
+                          {mod.description}
+                        </p>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-slate-600">Whisper Audio</span>
-                        <span className="text-slate-900 font-bold">128 kbps WebM</span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-slate-600">Sampling Rate</span>
-                        <span className="text-slate-900 font-bold">5 FPS / 200ms</span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-slate-600">Privacy Layer</span>
-                        <span className="text-emerald-700 font-bold">ON-DEVICE</span>
+
+                      <div className="space-y-3">
+                        <div className="border-t border-slate-200 pt-3 space-y-1 font-mono text-[11px] text-slate-600">
+                          {mod.details.map((d, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <span className="text-emerald-600 font-bold">›</span>
+                              <span>{d}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {mod.active ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartSession();
+                            }}
+                            className="w-full btn-primary text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 font-mono uppercase tracking-wide shadow-sm cursor-pointer"
+                          >
+                            <span>Start Practice Session</span>
+                            <span className="text-[10px] opacity-80">→</span>
+                          </button>
+                        ) : (
+                          <div className="text-center font-mono text-[11px] text-slate-400 py-2 border border-dashed border-slate-300 rounded-lg font-medium">
+                            Module In Development
+                          </div>
+                        )}
                       </div>
                     </div>
+                  ))}
+                </div>
+
+                {/* Pipeline Status Footer Bar */}
+                <div className="mt-6 pt-4 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>MediaPipe: <strong className="text-slate-900">Active</strong></span>
                   </div>
-
-                  <div className="bg-white p-3.5 rounded-lg border border-slate-200 font-mono text-xs space-y-1.5 shadow-sm">
-                    <div className="flex justify-between text-slate-700 font-bold text-[11px]">
-                      <span>System Readiness</span>
-                      <span className="text-emerald-700 font-bold">100% READY</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-600 w-full" />
-                    </div>
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Whisper: <strong className="text-slate-900">128 kbps</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Privacy: <strong className="text-slate-900">On-Device</strong></span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 text-emerald-700 font-bold">
+                    <span>System: 100% Ready</span>
                   </div>
                 </div>
               </div>
@@ -362,78 +335,6 @@ export default function LandingScreen({ onSelectImpromptu }: LandingScreenProps)
                         </li>
                       ))}
                     </ul>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* PAGE 3: MODULES (Light Slate Shaded Design) */}
-        {activeTab === "modules" && (
-          <div className="w-full space-y-10 my-auto">
-            <div>
-              <div className="font-mono text-xs uppercase tracking-[0.25em] text-slate-500 font-bold mb-2">
-                03 // DIAGNOSTIC FRAMEWORKS
-              </div>
-              <h2 className="text-3xl sm:text-5xl font-black text-[#0f172a] uppercase tracking-tight">
-                Practice Modules &amp; Simulators
-              </h2>
-              <p className="text-base text-slate-600 mt-2 max-w-2xl font-medium">
-                Targeted communication environments designed to stress-test specific vocal and delivery parameters.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {MODULES.map((mod) => (
-                <div
-                  key={mod.id}
-                  onClick={() => mod.active && onSelectImpromptu(customPrompt)}
-                  className={`bento-card bg-white flex flex-col justify-between min-h-[420px] border-slate-200 shadow-sm ${
-                    mod.active ? "cursor-pointer" : "opacity-60 cursor-not-allowed"
-                  }`}
-                >
-                  <div className="bento-card-header px-6 py-4 flex items-center justify-between bg-[#f1f5f9]">
-                    <span className="font-mono text-xs font-bold text-slate-700">{mod.code}</span>
-                    <span
-                      className={`text-xs font-mono font-bold px-2.5 py-1 rounded border ${
-                        mod.active
-                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                          : "bg-slate-200 text-slate-600 border-slate-300"
-                      }`}
-                    >
-                      {mod.badge}
-                    </span>
-                  </div>
-
-                  <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
-                    <div>
-                      <span className="font-mono text-xs text-emerald-700 block mb-2 uppercase font-bold tracking-wider">
-                        {mod.tagline}
-                      </span>
-                      <h3 className="text-base font-extrabold text-[#0f172a] mb-2">{mod.name}</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                        {mod.description}
-                      </p>
-                    </div>
-
-                    <div className="border-t border-slate-200 pt-4 space-y-1.5 font-mono text-xs text-slate-700">
-                      {mod.details.map((d, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-slate-400">›</span>
-                          <span>{d}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {mod.active ? (
-                      <div className="text-xs font-mono font-bold text-emerald-700 flex items-center justify-between pt-4 border-t border-slate-200 uppercase tracking-wide">
-                        <span>Launch Module</span>
-                        <span className="text-sm">→</span>
-                      </div>
-                    ) : (
-                      <span className="font-mono text-xs text-slate-400 pt-4 border-t border-slate-200 block font-medium">In Development</span>
-                    )}
                   </div>
                 </div>
               ))}
