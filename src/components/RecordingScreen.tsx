@@ -379,7 +379,10 @@ function ErrorCard({
               onClick={onUploadVideo}
               className="w-full py-3 rounded-xl text-xs font-bold font-mono tracking-wide uppercase bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>📁 Upload Pre-Recorded Video for Testing</span>
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span>Upload Pre-Recorded Video for Testing</span>
             </button>
           )}
           <button

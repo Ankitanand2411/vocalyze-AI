@@ -281,6 +281,44 @@ function SpeechCompositionDiagram({
               Analyzed
             </span>
           </div>
+
+          {/* Filler Word % */}
+          <div className="py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">
+                  Filler Words
+                </div>
+                <div className="text-xs text-slate-500 font-medium">
+                  {((acoustic_stats?.filler_word_ratio ?? 0) * 100).toFixed(1)}% of speech
+                </div>
+              </div>
+            </div>
+            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+              (acoustic_stats?.filler_word_ratio ?? 0) * 100 < 3
+                ? "bg-emerald-50 text-emerald-600"
+                : (acoustic_stats?.filler_word_ratio ?? 0) * 100 > 8
+                  ? "bg-rose-50 text-rose-600"
+                  : "bg-amber-50 text-amber-600"
+            }`}>
+              {insights?.filler_severity || "Clean"}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -859,6 +897,278 @@ function MetricCard({
   );
 }
 
+// ─── Score Breakdown — mirrors backend Impromptu mode compute_score() ────────
+
+function _linearScore(value: number, zeroAt: number, hundredAt: number): number {
+  if (hundredAt === zeroAt) return 100;
+  const t = (value - zeroAt) / (hundredAt - zeroAt);
+  return Math.max(0, Math.min(100, t * 100));
+}
+
+function _paceScore(wpm: number): number {
+  if (wpm <= 0) return 0;
+  if (wpm >= 110 && wpm <= 150) return 100;
+  if (wpm < 110) return _linearScore(wpm, 60, 110);
+  return _linearScore(wpm, 220, 150);
+}
+
+interface BreakdownMetric {
+  label: string;
+  rawScore: number;        // 0–100
+  weight: number;          // 0–1 (of total)
+  weightedScore: number;   // rawScore * weight
+  color: string;           // tailwind color key
+}
+
+function ScoreBreakdown({ report }: { report: AnalysisResponse }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const hp = report.head_pose;
+  const em = report.emotion;
+  const gz = report.gaze;
+  const ac = report.acoustic_stats;
+  const ls = report.linguistic_stats;
+  const NEUTRAL = 65;
+
+  const duration_ms = report.detected_events ? Math.max(0, ...report.detected_events.map(e => e.end_ms)) : 0;
+
+  // ── 1. Verbal Fluency ──────────────────────────────────────────
+  const fillerPct    = ac ? ac.filler_word_ratio * 100 : 0;
+  const fillerRaw    = ac ? _linearScore(fillerPct, 12, 2) : NEUTRAL;
+  const paceRaw      = ac ? _paceScore(ac.wpm) : NEUTRAL;
+  
+  // Re-implement pause quality and articulation for frontend display
+  const duration_min = duration_ms / 60_000.0;
+  const pauses_per_min = ac && duration_min > 0 ? ac.pause_count / duration_min : 0;
+  
+  let avgPauseScore = 100;
+  if (ac && ac.avg_pause_ms > 800) avgPauseScore = _linearScore(ac.avg_pause_ms, 2500, 800);
+  else if (ac && ac.avg_pause_ms > 0 && ac.avg_pause_ms < 200) avgPauseScore = _linearScore(ac.avg_pause_ms, 50, 200);
+  
+  let freqScore = 100;
+  if (pauses_per_min > 3.0) freqScore = _linearScore(pauses_per_min, 10, 3);
+  
+  const pauseQualityRaw = ac ? (0.6 * avgPauseScore + 0.4 * freqScore) : NEUTRAL;
+  
+  // Articulation rate
+  let articRaw = NEUTRAL;
+  if (ac) {
+    const rate = ac.articulation_rate;
+    if (rate <= 0) articRaw = 0;
+    else if (rate >= 150 && rate <= 180) articRaw = 100;
+    else if (rate < 150) articRaw = _linearScore(rate, 80, 150);
+    else articRaw = _linearScore(rate, 240, 180);
+  }
+
+  const fluencyScore = (15/35)*fillerRaw + (10/35)*paceRaw + (5/35)*pauseQualityRaw + (5/35)*articRaw;
+
+  // ── 2. Language Quality ────────────────────────────────────────
+  const runOnRaw = ls ? Math.max(0, 100 - 20 * ls.run_on_sentences) : NEUTRAL;
+  
+  const wordCount = report.transcript.trim().split(/\s+/).filter(Boolean).length;
+  
+  const weakPct  = ls && wordCount > 0 ? (ls.weak_words_count / wordCount) * 100 : 0;
+  const weakRaw  = ls ? _linearScore(weakPct, 15, 3) : NEUTRAL;
+  
+  const repeatedCount = ls ? ls.top_repeated_words.length : 0;
+  const vocabRaw = ls ? Math.max(0, 100 - repeatedCount * 25) : NEUTRAL;
+  
+  const fillerCount = ls ? ls.filler_words_found.length : 0;
+  const fillerContentRatio = wordCount > 0 ? fillerCount / wordCount : 0;
+  const fillerContentRaw = ls ? _linearScore(fillerContentRatio * 100, 12.5, 3.3) : NEUTRAL;
+  
+  const languageScore = (10/30)*runOnRaw + (8/30)*weakRaw + (7/30)*vocabRaw + (5/30)*fillerContentRaw;
+
+  // ── 3. Vocal Delivery ──────────────────────────────────────────
+  let pitchRaw = NEUTRAL;
+  if (ac) {
+      const pv = ac.pitch_variation;
+      if (pv <= 0) pitchRaw = 0;
+      else if (pv >= 25 && pv <= 50) pitchRaw = 100;
+      else if (pv < 25) pitchRaw = _linearScore(pv, 5, 25);
+      else pitchRaw = _linearScore(pv, 90, 50);
+  }
+  
+  let volRaw = NEUTRAL;
+  if (ac) {
+      if (ac.avg_volume < 0.005) volRaw = _linearScore(ac.avg_volume, 0.001, 0.005);
+      elif (ac.avg_volume < 0.01) volRaw = _linearScore(ac.avg_volume, 0.003, 0.01);
+      else volRaw = 100;
+  }
+  
+  let silenceRaw = NEUTRAL;
+  if (ac && duration_ms > 0) {
+      const silencePct = (ac.total_pause_time_ms / duration_ms) * 100;
+      if (silencePct >= 10 && silencePct <= 25) silenceRaw = 100;
+      else if (silencePct < 10) silenceRaw = _linearScore(silencePct, 0, 10);
+      else silenceRaw = _linearScore(silencePct, 55, 25);
+  }
+  
+  const vocalScore = (10/20)*pitchRaw + (5/20)*volRaw + (5/20)*silenceRaw;
+
+  // ── 4. Presence & Composure ────────────────────────────────────
+  const eyeContactRaw = hp.avg_eye_contact * 100;
+  const anxietyRaw    = (1 - em.avg_anxiety) * 100;
+  const warmthRaw     = Math.min(em.avg_smile / 0.15, 1) * 100;
+  const stressRaw     = (1 - em.avg_stress) * 100;
+
+  const presenceScore = (6/15)*eyeContactRaw + (4/15)*anxietyRaw + (3/15)*warmthRaw + (2/15)*stressRaw;
+
+  // Build metric lists
+  const fluencyMetrics: BreakdownMetric[] = [
+    { label: "Low Fillers", rawScore: fillerRaw, weight: 15/35, weightedScore: (15/35) * fillerRaw, color: "blue" },
+    { label: `Pace (${ac?.wpm?.toFixed(0) ?? '?'} WPM)`, rawScore: paceRaw, weight: 10/35, weightedScore: (10/35) * paceRaw, color: "blue" },
+    { label: "Pause Quality", rawScore: pauseQualityRaw, weight: 5/35, weightedScore: (5/35) * pauseQualityRaw, color: "blue" },
+    { label: "Articulation", rawScore: articRaw, weight: 5/35, weightedScore: (5/35) * articRaw, color: "blue" },
+  ];
+
+  const languageMetrics: BreakdownMetric[] = [
+    { label: "Run-on Sentences", rawScore: runOnRaw, weight: 10/30, weightedScore: (10/30) * runOnRaw, color: "purple" },
+    { label: "Weak Words",       rawScore: weakRaw,  weight: 8/30, weightedScore: (8/30) * weakRaw,  color: "purple" },
+    { label: "Vocabulary",       rawScore: vocabRaw, weight: 7/30, weightedScore: (7/30) * vocabRaw, color: "purple" },
+    { label: "Signal-to-Noise",  rawScore: fillerContentRaw, weight: 5/30, weightedScore: (5/30) * fillerContentRaw, color: "purple" },
+  ];
+  
+  const vocalMetrics: BreakdownMetric[] = [
+    { label: "Pitch Variation", rawScore: pitchRaw, weight: 10/20, weightedScore: (10/20) * pitchRaw, color: "orange" },
+    { label: "Volume",          rawScore: volRaw,   weight: 5/20, weightedScore: (5/20) * volRaw,   color: "orange" },
+    { label: "Silence Ratio",   rawScore: silenceRaw, weight: 5/20, weightedScore: (5/20) * silenceRaw, color: "orange" },
+  ];
+
+  const presenceMetrics: BreakdownMetric[] = [
+    { label: "Eye Contact",  rawScore: eyeContactRaw, weight: 6/15, weightedScore: (6/15) * eyeContactRaw, color: "teal" },
+    { label: "Low Anxiety",  rawScore: anxietyRaw,    weight: 4/15, weightedScore: (4/15) * anxietyRaw,    color: "teal" },
+    { label: "Warmth",       rawScore: warmthRaw,     weight: 3/15, weightedScore: (3/15) * warmthRaw,     color: "teal" },
+    { label: "Low Stress",   rawScore: stressRaw,     weight: 2/15, weightedScore: (2/15) * stressRaw,     color: "teal" },
+  ];
+
+  const categories = [
+    { name: "Verbal Fluency",     weight: "35%", score: fluencyScore,  metrics: fluencyMetrics,  accent: "blue" },
+    { name: "Language Quality",   weight: "30%", score: languageScore, metrics: languageMetrics, accent: "purple" },
+    { name: "Vocal Delivery",     weight: "20%", score: vocalScore,    metrics: vocalMetrics,    accent: "orange" },
+    { name: "Presence",           weight: "15%", score: presenceScore, metrics: presenceMetrics, accent: "teal" },
+  ];
+
+  const barColorMap: Record<string, { bg: string; fill: string; text: string }> = {
+    teal:   { bg: "bg-teal-100",   fill: "bg-teal-500",   text: "text-teal-700" },
+    blue:   { bg: "bg-blue-100",   fill: "bg-blue-500",   text: "text-blue-700" },
+    purple: { bg: "bg-purple-100", fill: "bg-purple-500", text: "text-purple-700" },
+    orange: { bg: "bg-orange-100", fill: "bg-orange-500", text: "text-orange-700" },
+  };
+
+  const renderCategory = (cat: typeof categories[number]) => {
+    const c = barColorMap[cat.accent] || barColorMap.teal;
+    return (
+      <div key={cat.name} className="space-y-2">
+        {/* Category header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${c.fill}`} />
+            <span className="text-[11px] font-bold text-slate-800">{cat.name}</span>
+            <span className="text-[9px] font-mono text-slate-400">{cat.weight}</span>
+          </div>
+          <span className={`text-[11px] font-bold font-mono ${c.text}`}>
+            {cat.score.toFixed(1)}
+          </span>
+        </div>
+
+        {/* Sub-metric bars */}
+        <div className="space-y-1 pl-4">
+          {cat.metrics.map((m) => {
+            const barPct = Math.max(0, Math.min(100, m.rawScore));
+            const barColor = barPct >= 70
+              ? c.fill
+              : barPct >= 40
+                ? "bg-amber-400"
+                : "bg-rose-400";
+            return (
+              <div key={m.label}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[10px] text-slate-500 font-medium">{m.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {(m.weight * 100).toFixed(0)}%
+                    </span>
+                    <span className="text-[10px] font-bold font-mono text-slate-700">
+                      {m.rawScore.toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+                <div className={`h-1 rounded-full ${c.bg} overflow-hidden`}>
+                  <div
+                    className={`h-full rounded-full ${barColor} transition-all duration-700`}
+                    style={{ width: `${barPct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="border-b border-slate-100 pb-2">
+      {/* Collapsible Header */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-1 py-2 group cursor-pointer"
+      >
+        <h4 className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider group-hover:text-slate-700 transition-colors">
+          Score Breakdown
+        </h4>
+        <div className="flex items-center gap-2">
+          {/* Quick summary chips when collapsed */}
+          {!isOpen && (
+            <div className="flex items-center gap-1.5">
+              {categories.map((cat) => {
+                const c = barColorMap[cat.accent];
+                return (
+                  <span
+                    key={cat.name}
+                    className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${c.bg.replace('100', '50')} ${c.text}`}
+                  >
+                    {cat.score.toFixed(0)}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <svg
+            className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Collapsible Content */}
+      {isOpen && (
+        <div className="space-y-4 pt-1 pb-2 animate-fade-in">
+          <div className="grid grid-cols-2 gap-4">
+             {renderCategory(categories[0])} {/* Fluency */}
+             {renderCategory(categories[1])} {/* Language */}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+             {renderCategory(categories[2])} {/* Vocal */}
+             {renderCategory(categories[3])} {/* Presence */}
+          </div>
+
+          {/* Formula note */}
+          <p className="text-[9px] text-slate-400 font-medium text-center pt-1 mt-2 border-t border-slate-100">
+            {categories.map(c => `${c.weight} × ${c.name}`).join("  +  ")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Backend Coaching Report ──────────────────────────────────────────────────
 
 function BackendReport({
@@ -1014,6 +1324,9 @@ function BackendReport({
         <h3 className="text-lg font-bold text-slate-800">Overall Score</h3>
       </div>
 
+      {/* Score Breakdown */}
+      <ScoreBreakdown report={report} />
+
       {/* Tabs Navigation */}
       <div className="flex items-center border-b border-slate-200">
         <button
@@ -1035,7 +1348,6 @@ function BackendReport({
           }`}
         >
           <span>AI Coaching Feedback</span>
-          <span className="text-xs">💡</span>
         </button>
       </div>
 
@@ -1177,7 +1489,9 @@ function BackendReport({
               <div className="bg-[#fef3c7] rounded-2xl p-5 border border-amber-200 shadow-sm">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-8 h-8 rounded-full bg-[#fde68a] flex items-center justify-center shrink-0 shadow-sm">
-                    <span className="text-xl">💡</span>
+                    <svg className="w-4 h-4 text-amber-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
                   </div>
                   <div>
                     <h4 className="text-[17px] font-bold text-slate-900">
@@ -1210,7 +1524,10 @@ function BackendReport({
                     {llmReport.structural_analysis && (
                       <div className="py-2">
                         <h5 className="text-sm font-extrabold text-indigo-900 uppercase tracking-wider mb-2 flex items-center gap-2">
-                          <span className="text-lg">🏗️</span> Structure
+                          <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                          </svg>
+                          Structure
                         </h5>
                         <p className="text-[14.5px] text-slate-700 leading-relaxed font-medium">
                           {llmReport.structural_analysis}
@@ -1222,7 +1539,11 @@ function BackendReport({
                     {llmReport.body_language_analysis && (
                       <div className="py-2">
                         <h5 className="text-sm font-extrabold text-fuchsia-900 uppercase tracking-wider mb-2 flex items-center gap-2">
-                          <span className="text-lg">👀</span> Body Language
+                          <svg className="w-4 h-4 text-fuchsia-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          Body Language
                         </h5>
                         <p className="text-[14.5px] text-slate-700 leading-relaxed font-medium">
                           {llmReport.body_language_analysis}
@@ -1234,7 +1555,10 @@ function BackendReport({
                     {llmReport.improvement_plan?.length > 0 && (
                       <div className="py-2">
                         <h5 className="text-base font-extrabold text-amber-950 mb-4 flex items-center gap-2">
-                          <span className="text-xl">🚀</span> Action Plan
+                          <svg className="w-4.5 h-4.5 text-amber-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Action Plan
                         </h5>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                           {llmReport.improvement_plan.map(
@@ -1263,7 +1587,10 @@ function BackendReport({
                       {llmReport.strengths?.length > 0 && (
                         <div>
                           <h5 className="text-base font-extrabold text-emerald-950 mb-4 flex items-center gap-2">
-                            <span className="text-xl">✅</span> Key Strengths
+                            <svg className="w-4.5 h-4.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Key Strengths
                           </h5>
                           <ul className="space-y-4 text-[14px] text-slate-700 font-medium">
                             {llmReport.strengths.map(
@@ -1281,8 +1608,10 @@ function BackendReport({
                       {llmReport.gap_analysis?.length > 0 && (
                         <div>
                           <h5 className="text-base font-extrabold text-rose-950 mb-4 flex items-center gap-2">
-                            <span className="text-xl">🎯</span> Areas for
-                            Improvement
+                            <svg className="w-4.5 h-4.5 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            Areas for Improvement
                           </h5>
                           <ul className="space-y-4 text-[14px] text-slate-700 font-medium">
                             {llmReport.gap_analysis.map(
@@ -1319,7 +1648,10 @@ function BackendReport({
                     return (
                       <div className="pt-8 mt-4 border-t border-amber-200/60">
                         <h5 className="text-sm font-bold text-slate-900 mb-6 flex items-center gap-2 uppercase tracking-wider">
-                          <span>📝</span> Sentence Corrections
+                          <svg className="w-4 h-4 text-amber-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Sentence Corrections
                         </h5>
                         <div className="space-y-10">
                           {Object.entries(grouped).map(
