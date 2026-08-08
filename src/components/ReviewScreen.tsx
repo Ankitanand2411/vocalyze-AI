@@ -992,7 +992,7 @@ function ScoreBreakdown({ report }: { report: AnalysisResponse }) {
   let volRaw = NEUTRAL;
   if (ac) {
       if (ac.avg_volume < 0.005) volRaw = _linearScore(ac.avg_volume, 0.001, 0.005);
-      elif (ac.avg_volume < 0.01) volRaw = _linearScore(ac.avg_volume, 0.003, 0.01);
+      else if (ac.avg_volume < 0.01) volRaw = _linearScore(ac.avg_volume, 0.003, 0.01);
       else volRaw = 100;
   }
   
